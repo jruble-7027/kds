@@ -1,0 +1,293 @@
+/* Chick-fil-A Kitchen KDS Companion Overlay & Dashboard Row Styles */
+
+/* Inline Row Action Button injected into order-management.cfahome.com/dashboard table */
+.cfa-kds-row-action-cell {
+  white-space: nowrap;
+  text-align: right;
+  padding-right: 12px !important;
+}
+
+.cfa-kds-row-btn {
+  background: #E5173F;
+  color: #FFFFFF !important;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 6px rgba(229, 23, 63, 0.28);
+  transition: background 0.15s ease, transform 0.1s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.cfa-kds-row-btn:hover {
+  background: #C40E32;
+  transform: translateY(-1px);
+}
+
+.cfa-kds-row-btn.synced {
+  background: #0D9488;
+  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.25);
+}
+
+.cfa-kds-row-selected {
+  outline: 2px solid #E5173F !important;
+  background-color: #FFF1F2 !important;
+}
+
+#cfa-kds-companion-root {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483640;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #1E293B;
+}
+
+#cfa-kds-companion-root * {
+  box-sizing: border-box;
+}
+
+/* Floating Launcher Pill */
+.cfa-kds-fab {
+  background: linear-gradient(135deg, #E5173F 0%, #C40E32 100%);
+  color: #FFFFFF;
+  border: 2px solid #FFFFFF;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(229, 23, 63, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cfa-kds-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(229, 23, 63, 0.6);
+}
+
+.cfa-kds-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+}
+
+.cfa-kds-status-dot.offline {
+  background: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.3);
+}
+
+/* Companion Drawer Panel */
+.cfa-kds-panel {
+  width: 400px;
+  max-height: 88vh;
+  background: #FFFFFF;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.28);
+  border: 2px solid #E5173F;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.cfa-kds-panel.hidden {
+  display: none;
+}
+
+.cfa-kds-header {
+  background: linear-gradient(135deg, #E5173F 0%, #B80C2E 100%);
+  color: #FFFFFF;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cfa-kds-header-title {
+  display: flex;
+  flex-direction: column;
+}
+
+.cfa-kds-header-title strong {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+
+.cfa-kds-header-title span {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.cfa-kds-close-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #FFFFFF;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.cfa-kds-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cfa-kds-section {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.cfa-kds-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748B;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cfa-kds-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cfa-kds-input,
+.cfa-kds-select,
+.cfa-kds-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #CBD5E1;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #0F172A;
+  background: #FFFFFF;
+}
+
+.cfa-kds-textarea {
+  resize: vertical;
+  min-height: 48px;
+}
+
+.cfa-kds-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.cfa-kds-preset-btn {
+  background: #FFF1F2;
+  color: #BE123C;
+  border: 1px solid #FECDD3;
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+
+.cfa-kds-preset-btn:hover {
+  background: #E5173F;
+  color: #FFFFFF;
+  border-color: #E5173F;
+}
+
+.cfa-kds-primary-btn {
+  width: 100%;
+  background: #E5173F;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 9px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(229, 23, 63, 0.3);
+}
+
+.cfa-kds-primary-btn:hover {
+  background: #C40E32;
+}
+
+.cfa-kds-sync-all-btn {
+  width: 100%;
+  background: #004F71;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.cfa-kds-sync-all-btn:hover {
+  background: #003B55;
+}
+
+.cfa-kds-secondary-btn {
+  background: #0F172A;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cfa-kds-toast {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  display: none;
+}
+
+.cfa-kds-toast.success {
+  display: block;
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+}
+
+.cfa-kds-toast.error {
+  display: block;
+  background: #FEF2F2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+}

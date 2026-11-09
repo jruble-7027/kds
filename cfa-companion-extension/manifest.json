@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Chick-fil-A Kitchen KDS Companion (cfahome.com)",
+  "version": "1.1.0",
+  "description": "Directly integrates with https://order-management.cfahome.com/dashboard to sync Upcoming orders and trigger flashing red Kitchen Touchscreen alerts.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://order-management.cfahome.com/*",
+    "https://*.cfahome.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://order-management.cfahome.com/*",
+        "https://*.cfahome.com/*"
+      ],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://order-management.cfahome.com/*",
+        "https://*.cfahome.com/*"
+      ],
+      "css": ["companion.css"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

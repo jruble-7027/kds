@@ -1,0 +1,18 @@
+How to Load It in Brave:
+Open Brave and type brave://extensions in the address bar.
+Turn ON Developer mode (toggle in the top-right corner).
+Click Load unpacked (top-left button) and select the folder:
+
+Browse to the extension folder:
+C:\Users\jruble_wcatrojans\.gemini\antigravity\scratch\cfa-catering-portal\cfa-companion-extension
+
+Refresh https://order-management.cfahome.com/dashboard
+(If you already loaded it a minute ago, just click the circular Reload ↻ icon on the extension card).
+
+🔄 How to Load / Refresh the Extension
+In Chrome or Edge, open chrome://extensions (or edge://extensions).
+Make sure Developer mode is toggled ON.
+Click Load unpacked and select:
+text
+C:\Users\jruble_wcatrojans\.gemini\antigravity\scratch\cfa-catering-portal\cfa-companion-extension
+(If you already loaded it a minute ago, just click the circular Reload ↻ icon on the extension card).

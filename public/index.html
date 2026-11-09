@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🐔 Chick-fil-A Catering Fulfillment & Kitchen Display</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐔</text></svg>">
+</head>
+<body>
+
+  <!-- Application Header -->
+  <header class="app-header">
+    <div class="header-top">
+      <div class="brand-section">
+        <div class="cfa-logo-pill">
+          <span>🐔</span>
+          <span>Chick-fil-A</span>
+        </div>
+        <div class="brand-title">
+          <h1>Catering Fulfillment Portal</h1>
+          <span>Live Kitchen Display & Order Desk Synchronization</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Live SSE Sync Status -->
+        <div class="live-status-pill">
+          <div class="pulse-dot"></div>
+          <span>Kitchen Live Sync</span>
+        </div>
+
+        <!-- Sound Chime Toggle -->
+        <button id="audio-toggle-btn" class="audio-toggle-btn" title="Toggle sound alerts on changes">
+          <span>🔔</span>
+          <span>Sound Alert: ON</span>
+        </button>
+
+        <!-- View Switcher -->
+        <div class="view-switcher">
+          <button id="view-desk-btn" class="view-btn active" title="Order Desk View for taking orders and submitting changes">
+            📋 Order Desk
+          </button>
+          <button id="view-kitchen-btn" class="view-btn" title="Touchscreen display for Kitchen Staff">
+            🍳 Kitchen KDS
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Network Info Banner (for kitchen tablet connection) -->
+    <div id="local-ip-banner" style="background: #EEF2F6; padding: 6px 24px; font-size: 0.8rem; color: #334155; border-bottom: 1px solid #E2E8F0; display: flex; align-items: center; justify-content: space-between;">
+      <span>📱 <strong>Kitchen Touchscreen Setup:</strong> Open this URL on any iPad or kitchen tablet: <code>http://localhost:3000?view=kitchen</code></span>
+    </div>
+
+    <!-- Subbar: Filters & Fast Action Buttons -->
+    <div class="header-subbar">
+      <div class="filter-group">
+        <button class="filter-tab active" data-filter="all">All Active</button>
+        <button class="filter-tab" data-filter="due_soon">🔥 Due Soon (&lt;45m)</button>
+        <button class="filter-tab" data-filter="prep">👨‍🍳 Needs Prep</button>
+        <button class="filter-tab" data-filter="ready">✓ Ready for Pickup</button>
+        <button class="filter-tab" data-filter="completed">Fulfilled</button>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <!-- Emergency Modification Button (Solves the wife's exact issue!) -->
+        <button class="btn-alert-pulse" onclick="window.CFA_APP.openQuickModModal()">
+          <span>⚡</span>
+          <span>Add Item / Flash Kitchen</span>
+        </button>
+
+        <!-- New Order Button -->
+        <button class="btn-primary" onclick="window.CFA_APP.openNewOrderModal()">
+          <span>+</span>
+          <span>New Catering Order</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid Content -->
+  <main class="main-content">
+    <div id="orders-grid" class="orders-grid">
+      <!-- Dynamically generated order cards will appear here -->
+    </div>
+
+    <div id="empty-state" style="display: none; text-align: center; padding: 60px 20px; color: #64748B;">
+      <div style="font-size: 3rem; margin-bottom: 10px;">📦</div>
+      <h3 style="font-size: 1.25rem; font-weight: 700; color: #1E293B;">No Catering Orders Found</h3>
+      <p style="margin-top: 6px;">There are no active orders matching your filter.</p>
+    </div>
+  </main>
+
+  <!-- =========================================================================
+       MODAL 1: QUICK-ADD / EMERGENCY MODIFICATION (The User's Core Need!)
+       ========================================================================= -->
+  <div id="quick-mod-modal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header" style="background: #FEF2F2; border-bottom: 1px solid #FCA5A5;">
+        <h2>
+          <span style="color: #DC2626;">⚡</span>
+          <span>Quick Modification / Kitchen Alert</span>
+        </h2>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+
+      <form id="quick-mod-form">
+        <div class="modal-body">
+          <div style="font-size: 0.88rem; color: #475569; background: #FFF5F5; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #DC2626;">
+            <strong>Immediate Kitchen Notification:</strong> When you submit this, the selected order will <strong>flash red</strong> on the kitchen touchscreen and ring a loud audio chime until acknowledged.
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Target Catering Order *</label>
+            <select id="quick-mod-order-select" class="form-select" required>
+              <!-- Filled dynamically with active orders -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Fast 1-Click Presets (Phone Call Additions)</label>
+            <div id="quick-sauce-presets-grid" class="quick-sauce-grid">
+              <!-- Fast sauce & drink presets loaded from CFA_MENU -->
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Item Name *</label>
+              <input type="text" id="quick-mod-item-name" class="form-input" placeholder="e.g. Barbeque Sauce Packets" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Quantity & Unit *</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="number" id="quick-mod-qty" class="form-input" style="width: 85px;" value="50" min="1" required>
+                <input type="text" id="quick-mod-unit" class="form-input" value="Packets" placeholder="Packets, Gallons...">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="quick-mod-category" class="form-select">
+              <option value="Sauces">Sauces & Condiments</option>
+              <option value="Beverages">Beverages & Ice</option>
+              <option value="Trays">Catering Trays</option>
+              <option value="Sides">Sides & Salads</option>
+              <option value="Paper Goods">Paper Goods & Utensils</option>
+              <option value="General">General / Custom Item</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Customer Note / Special Request</label>
+            <textarea id="quick-mod-note" class="form-textarea" rows="2" placeholder="e.g. Customer called in: pack in separate brown bag with extra napkins"></textarea>
+          </div>
+
+          <!-- Urgency Trigger -->
+          <div class="urgency-toggle-card">
+            <div>
+              <div style="font-weight: 800; font-size: 0.92rem; color: #991B1B;">🚨 FLASH KITCHEN DISPLAY RED & RING CHIME</div>
+              <div style="font-size: 0.78rem; color: #B91C1C;">Demands touchscreen chef acknowledgment before dismiss</div>
+            </div>
+            <input type="checkbox" id="quick-mod-urgency" checked style="width: 22px; height: 22px; accent-color: #DC2626; cursor: pointer;">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-card-action btn-close-modal">Cancel</button>
+          <button type="submit" class="btn-primary" style="background: #DC2626; padding: 12px 24px; font-size: 1rem;">
+            <span>⚡</span>
+            <span>Dispatch Alert to Kitchen</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 2: NEW CATERING ORDER BOOKING
+       ========================================================================= -->
+  <div id="new-order-modal" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 750px;">
+      <div class="modal-header">
+        <h2>
+          <span>📋</span>
+          <span>Book New Catering Order</span>
+        </h2>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+
+      <form id="new-order-form">
+        <div class="modal-body" style="max-height: 70vh;">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Customer Contact Name *</label>
+              <input type="text" id="new-order-customer" class="form-input" placeholder="e.g. Jennifer Miller" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Phone Number</label>
+              <input type="tel" id="new-order-phone" class="form-input" placeholder="555-123-4567">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Company / Organization</label>
+              <input type="text" id="new-order-org" class="form-input" placeholder="e.g. Ridgeview Academy">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Guest Count</label>
+              <input type="number" id="new-order-guests" class="form-input" value="25" min="1">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Scheduled Pickup / Delivery Time *</label>
+              <input type="datetime-local" id="new-order-time" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Order Type</label>
+              <select id="new-order-type" class="form-select">
+                <option value="Pickup">Curbside / In-Store Pickup</option>
+                <option value="Delivery">Chick-fil-A Delivery</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Kitchen Notes / Special Instructions</label>
+            <textarea id="new-order-notes" class="form-textarea" rows="2" placeholder="e.g. Peanut allergy in party, provide extra plates and tongs"></textarea>
+          </div>
+
+          <!-- Menu Item Selector -->
+          <div class="form-group">
+            <label class="form-label">Select Catering Items (Click to Add)</label>
+            <div id="new-order-menu-container" style="max-height: 220px; overflow-y: auto; border: 1px solid #CBD5E1; padding: 12px; border-radius: 8px;">
+              <!-- Loaded from cfa-menu.js -->
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Selected Items in this Order</label>
+            <div id="new-order-selected-items" style="border: 1px dashed #CBD5E1; border-radius: 8px; padding: 10px; min-height: 60px;">
+              <!-- Selected items list -->
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-card-action btn-close-modal">Cancel</button>
+          <button type="submit" class="btn-primary">
+            <span>✓</span>
+            <span>Create & Send to Kitchen</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 3: AUDIT TRAIL / ORDER HISTORY
+       ========================================================================= -->
+  <div id="history-modal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="history-modal-title">
+          <span>📜</span>
+          <span>Order History & Audit Trail</span>
+        </h2>
+        <button class="btn-close-modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div id="history-log-list">
+          <!-- Dynamically populated activity logs -->
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-card-action btn-close-modal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- CFA Menu & App Scripts -->
+  <script src="js/cfa-menu.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
