@@ -9,8 +9,26 @@ const { DatabaseSync } = require('node:sqlite');
 const crypto = require('node:crypto');
 
 const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(__dirname, 'catering.db');
+const DB_FILE = process.env.DB_PATH || path.join(__dirname, 'catering.db');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const KDS_PASSWORD = (process.env.KDS_PASSWORD || '').trim();
+const KDS_API_KEY = (process.env.KDS_API_KEY || KDS_PASSWORD || '').trim();
+const AUTH_COOKIE_TOKEN = KDS_PASSWORD
+  ? crypto.createHash('sha256').update(`cfa-kds-auth:${KDS_PASSWORD}`).digest('hex')
+  : '';
+
+// Ensure parent directory exists when using a mounted volume like /data/catering.db on Railway
+fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
+
+// If using a custom DB_PATH (e.g. /data/catering.db on Railway) and it doesn't exist yet,
+// seed it from the bundled catering.db so existing synced orders carry over automatically!
+const BUNDLED_DB = path.join(__dirname, 'catering.db');
+if (path.resolve(DB_FILE) !== path.resolve(BUNDLED_DB) && !fs.existsSync(DB_FILE) && fs.existsSync(BUNDLED_DB)) {
+  try {
+    fs.copyFileSync(BUNDLED_DB, DB_FILE);
+    console.log(`Initialized ${DB_FILE} from bundled catering.db`);
+  } catch (e) {}
+}
 
 // Initialize SQLite database
 const db = new DatabaseSync(DB_FILE);
@@ -246,21 +264,199 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
+// Authentication Helper (Only enforced when KDS_PASSWORD is set in environment, e.g. on Railway)
+function parseCookies(req) {
+  const list = {};
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const key = parts.shift().trim();
+    const val = decodeURIComponent(parts.join('='));
+    if (key) list[key] = val;
+  });
+  return list;
+}
+
+function isRequestAuthenticated(req, parsedUrl) {
+  if (!KDS_PASSWORD) return true; // Local mode without password set
+
+  const cookies = parseCookies(req);
+  if (cookies.kds_auth && cookies.kds_auth === AUTH_COOKIE_TOKEN) {
+    return true;
+  }
+
+  const headerKey = (req.headers['x-kds-key'] || '').trim();
+  if (headerKey && (headerKey === KDS_API_KEY || headerKey === KDS_PASSWORD)) {
+    return true;
+  }
+
+  const queryKey = (parsedUrl.searchParams.get('key') || '').trim();
+  if (queryKey && (queryKey === KDS_API_KEY || queryKey === KDS_PASSWORD)) {
+    return true;
+  }
+
+  return false;
+}
+
+function renderLoginPage(errorMsg = '') {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Catering Kitchen KDS</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0B0F17 0%, #1E293B 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #0F172A;
+    }
+    .login-card {
+      background: #FFFFFF;
+      width: 100%;
+      max-width: 400px;
+      border-radius: 16px;
+      padding: 32px 28px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.45);
+      text-align: center;
+    }
+    .badge {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: #E5173F;
+      color: #FFF;
+      font-size: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 20px rgba(229, 23, 63, 0.35);
+    }
+    h1 { font-size: 1.4rem; font-weight: 800; color: #0F172A; margin-bottom: 6px; }
+    p { font-size: 0.9rem; color: #64748B; margin-bottom: 22px; }
+    .err {
+      background: #FEF2F2;
+      color: #DC2626;
+      border: 1px solid #FECACA;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 10px;
+      font-size: 1rem;
+      margin-bottom: 14px;
+      outline: none;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    input:focus { border-color: #E5173F; box-shadow: 0 0 0 3px rgba(229, 23, 63, 0.15); }
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: #E5173F;
+      color: #FFF;
+      font-size: 1rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button:hover { background: #C41230; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="badge">🐔</div>
+    <h1>Catering Kitchen KDS</h1>
+    <p>Enter your team PIN or password to view live orders</p>
+    ${errorMsg ? `<div class="err">${errorMsg}</div>` : ''}
+    <form method="POST" action="/api/auth/login">
+      <input type="password" name="password" placeholder="Team Password / PIN" required autofocus />
+      <button type="submit">Unlock Kitchen Display</button>
+    </form>
+  </div>
+</body>
+</html>`;
+}
+
 // HTTP Server
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
   const method = req.method;
 
-  // CORS headers (including Private Network Access for https://order-management.cfahome.com)
+  // CORS headers (including Private Network Access & Extension Key for https://order-management.cfahome.com)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-KDS-Key');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
   if (method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // Login endpoint (Supports both HTML form POST and JSON POST)
+  if (pathname === '/api/auth/login' && method === 'POST') {
+    let rawBody = '';
+    req.on('data', (chunk) => { rawBody += chunk.toString(); });
+    req.on('end', () => {
+      let submitted = '';
+      try {
+        if ((req.headers['content-type'] || '').includes('application/json')) {
+          submitted = (JSON.parse(rawBody).password || '').trim();
+        } else {
+          const params = new URLSearchParams(rawBody);
+          submitted = (params.get('password') || '').trim();
+        }
+      } catch (e) {}
+
+      if (!KDS_PASSWORD || submitted === KDS_PASSWORD || submitted === KDS_API_KEY) {
+        res.writeHead(302, {
+          'Set-Cookie': `kds_auth=${AUTH_COOKIE_TOKEN}; Path=/; Max-Age=${60 * 60 * 24 * 30}; HttpOnly; SameSite=Lax`,
+          'Location': '/'
+        });
+        res.end();
+      } else {
+        res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderLoginPage('Invalid PIN or password. Please try again.'));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/logout' && method === 'GET') {
+    res.writeHead(302, {
+      'Set-Cookie': 'kds_auth=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax',
+      'Location': '/'
+    });
+    res.end();
+    return;
+  }
+
+  // Enforce authentication when KDS_PASSWORD is configured
+  if (!isRequestAuthenticated(req, parsedUrl)) {
+    if (pathname.startsWith('/api/')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized. Check KDS Password / API Key in Companion Extension.' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(renderLoginPage());
     return;
   }
 

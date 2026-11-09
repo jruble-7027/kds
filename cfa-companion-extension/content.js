@@ -26,12 +26,22 @@
   const PROMISED_DATE_REGEX = /\b(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),\s+(?:[A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),\s*\d{1,2}:\d{2}\s*[ap]m\b/i;
   const PROMISED_DATE_GLOBAL_REGEX = /\b(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),\s+(?:[A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),\s*\d{1,2}:\d{2}\s*[ap]m\b/gi;
 
-  // Dual-Transport KDS API Caller (Service Worker + Direct localhost/127.0.0.1 Fallback)
+  const DEFAULT_CLOUD_URL = 'https://kds-production-9203.up.railway.app';
+  let kdsServerUrl = (localStorage.getItem('cfa_kds_server_url') || DEFAULT_CLOUD_URL).trim().replace(/\/+$/, '');
+  let kdsApiKey = (localStorage.getItem('cfa_kds_api_key') || '').trim();
+
+  // Dual-Transport KDS API Caller (Supports Railway Cloud URL + Password/Key OR Localhost)
   async function callKdsApi(message) {
+    const msgWithCfg = {
+      ...message,
+      serverUrl: kdsServerUrl,
+      apiKey: kdsApiKey
+    };
+
     try {
       if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
         const bgRes = await new Promise((resolve) => {
-          chrome.runtime.sendMessage(message, (res) => {
+          chrome.runtime.sendMessage(msgWithCfg, (res) => {
             if (chrome.runtime.lastError) {
               resolve(null);
             } else {
@@ -43,17 +53,21 @@
       }
     } catch (e) {}
 
-    const urls = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+    const urls = kdsServerUrl
+      ? [kdsServerUrl, DEFAULT_CLOUD_URL, 'http://localhost:3000', 'http://127.0.0.1:3000']
+      : [DEFAULT_CLOUD_URL, 'http://localhost:3000', 'http://127.0.0.1:3000'];
+    const authHeaders = kdsApiKey ? { 'X-KDS-Key': kdsApiKey } : {};
+
     for (const base of urls) {
       try {
         if (message.type === 'KDS_GET_ORDERS') {
-          const r = await fetch(`${base}/api/orders`);
+          const r = await fetch(`${base}/api/orders`, { headers: authHeaders });
           const orders = await r.json();
           if (r.ok) return { ok: true, orders, baseUrl: base };
         } else if (message.type === 'KDS_SYNC_ORDER') {
           const r = await fetch(`${base}/api/orders/sync`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify(message.payload)
           });
           const data = await r.json();
@@ -61,7 +75,7 @@
         } else if (message.type === 'KDS_QUICK_ADD') {
           const r = await fetch(`${base}/api/orders/${encodeURIComponent(message.orderId)}/quick-add`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify(message.payload)
           });
           const data = await r.json();
@@ -72,7 +86,7 @@
 
     return {
       ok: false,
-      error: 'Could not reach Kitchen KDS on localhost:3000. Make sure server is running.'
+      error: 'Could not reach Kitchen KDS Server. Check Server URL / Password in ⚙️ Settings.'
     };
   }
 
@@ -376,11 +390,24 @@
           <strong>🐔 CFA Kitchen KDS Companion</strong>
           <span id="cfa-kds-conn-text">Connecting to Kitchen Touchscreen...</span>
         </div>
-        <button id="cfa-kds-minimize" class="cfa-kds-close-btn" title="Minimize">−</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button id="cfa-kds-settings-toggle" class="cfa-kds-close-btn" title="Cloud / Server URL Settings" style="font-size:14px;">⚙️</button>
+          <button id="cfa-kds-minimize" class="cfa-kds-close-btn" title="Minimize">−</button>
+        </div>
       </div>
 
       <div class="cfa-kds-body">
         <div id="cfa-kds-toast" class="cfa-kds-toast"></div>
+
+        <!-- Collapsible Cloud / Railway Server Settings -->
+        <div id="cfa-kds-settings-box" class="cfa-kds-section" style="display:none; background:#F8FAFC; border-color:#CBD5E1;">
+          <div class="cfa-kds-section-title" style="margin-bottom:6px;">
+            <span>🌐 KDS Server URL (Local or Railway Cloud)</span>
+          </div>
+          <input id="cfa-kds-server-url" class="cfa-kds-input" placeholder="http://localhost:3000 or https://...up.railway.app" style="margin-bottom:6px; width:100%;" />
+          <input id="cfa-kds-api-key" type="password" class="cfa-kds-input" placeholder="Team Password / KDS_PASSWORD (if set)" style="margin-bottom:6px; width:100%;" />
+          <button id="cfa-kds-save-settings" class="cfa-kds-secondary-btn" style="width:100%; padding:6px;">✓ Save & Reconnect</button>
+        </div>
 
         <!-- Bulk Dashboard Sync Banner -->
         <div id="cfa-kds-bulk-box" class="cfa-kds-section" style="background: #EFF6FF; border-color: #BFDBFE;">
@@ -505,6 +532,38 @@
   minimizeBtn.addEventListener('click', () => {
     isPanelOpen = false;
     panel.classList.add('hidden');
+  });
+
+  const settingsToggleBtn = document.getElementById('cfa-kds-settings-toggle');
+  const settingsBox = document.getElementById('cfa-kds-settings-box');
+  const serverUrlInput = document.getElementById('cfa-kds-server-url');
+  const apiKeyInput = document.getElementById('cfa-kds-api-key');
+  const saveSettingsBtn = document.getElementById('cfa-kds-save-settings');
+
+  serverUrlInput.value = kdsServerUrl;
+  apiKeyInput.value = kdsApiKey;
+
+  settingsToggleBtn.addEventListener('click', () => {
+    settingsBox.style.display = settingsBox.style.display === 'none' ? 'block' : 'none';
+  });
+
+  saveSettingsBtn.addEventListener('click', async () => {
+    kdsServerUrl = serverUrlInput.value.trim().replace(/\/+$/, '');
+    kdsApiKey = apiKeyInput.value.trim();
+    localStorage.setItem('cfa_kds_server_url', kdsServerUrl);
+    localStorage.setItem('cfa_kds_api_key', kdsApiKey);
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+        chrome.runtime.sendMessage({
+          type: 'KDS_SAVE_CONFIG',
+          serverUrl: kdsServerUrl,
+          apiKey: kdsApiKey
+        });
+      }
+    } catch (e) {}
+    settingsBox.style.display = 'none';
+    showToast(`✓ Saved KDS Server: ${kdsServerUrl || 'http://localhost:3000'}`, 'success');
+    await refreshKdsOrders();
   });
 
   fab.addEventListener('click', () => {

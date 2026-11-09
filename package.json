@@ -1,0 +1,13 @@
+{
+  "name": "cfa-catering-kds",
+  "version": "1.2.0",
+  "description": "Chick-fil-A Catering Fulfillment & Real-Time Kitchen Display System (KDS)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
