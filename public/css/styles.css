@@ -729,12 +729,15 @@ body.kitchen-mode .order-search-input {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .time-val {
-  font-size: 1.1rem;
+  font-size: 0.92rem;
   font-weight: 800;
   color: #0F172A;
+  white-space: nowrap;
 }
 
 .time-countdown {
@@ -1041,17 +1044,18 @@ body.kitchen-mode .card-header {
 
 body.kitchen-mode .order-num {
   color: #F8FAFC;
-  font-size: 1.3rem;
+  font-size: 1.12rem;
 }
 
 body.kitchen-mode .customer-name {
   color: #E2E8F0;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
 }
 
 body.kitchen-mode .time-val {
   color: #F8FAFC;
-  font-size: 1.3rem;
+  font-size: 0.96rem;
+  white-space: nowrap;
 }
 
 body.kitchen-mode .item-row {

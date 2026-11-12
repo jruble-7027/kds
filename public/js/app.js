@@ -320,7 +320,7 @@
     if (status === 'in_prep') return { label: '👨‍🍳 IN PREP', cls: 'status-in_prep' };
     if (status === 'ready') return { label: '✅ READY', cls: 'status-ready' };
     if (status === 'completed') return { label: '✓ FULFILLED', cls: 'status-completed' };
-    return { label: '🆕 NEW', cls: 'status-new' };
+    return null;
   }
 
   function syncFocusBackdrop() {
@@ -408,19 +408,19 @@
       ` : ''}
 
       <div class="card-header" onclick="window.CFA_APP.toggleFocusOrder('${order.id}', event)" title="Tap header to toggle Full-Screen Focus View">
-        <div>
+        <div style="min-width: 0; flex: 1;">
           <div class="order-ref">
             <span class="order-num">${escapeHtml(order.order_number)}</span>
             <span class="order-type-badge ${order.order_type.toLowerCase()}">${escapeHtml(order.order_type)}</span>
-            <span class="status-pill ${statusMeta.cls}">${statusMeta.label}</span>
-            <span class="focus-toggle-pill ${isFocused ? 'active' : ''}">${isFocused ? '✕ Close Full View' : '🔍 Full View'}</span>
+            ${statusMeta ? `<span class="status-pill ${statusMeta.cls}">${statusMeta.label}</span>` : ''}
+            ${isFocused ? `<span class="focus-toggle-pill active">✕ Close Full View</span>` : ''}
           </div>
           <div class="customer-name">${escapeHtml(order.customer_name)}</div>
           ${order.customer_phone ? `<div class="customer-org" style="font-weight:700; color:#0F172A; margin-top:2px;">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
           ${order.organization ? `<div class="customer-org" style="color:#B45309; font-weight:700; margin-top:2px;">📍 Delivery: ${escapeHtml(order.organization)}</div>` : ''}
         </div>
         <div class="timing-badge">
-          <div class="time-val" style="font-size:0.95rem;">${formatPickupTime(order.pickup_time)}</div>
+          <div class="time-val">${formatPickupTime(order.pickup_time)}</div>
           <div class="time-countdown ${timing.cls}">${timing.text}</div>
           <div class="packed-pill ${allPacked ? 'all-packed' : ''}">${packedLabel}</div>
         </div>
