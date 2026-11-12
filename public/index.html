@@ -118,48 +118,50 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Target Catering Order *</label>
+            <label class="form-label">1. Target Catering Order *</label>
             <select id="quick-mod-order-select" class="form-select" required>
               <!-- Filled dynamically with active orders -->
             </select>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Fast 1-Click Presets (Phone Call Additions)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label class="form-label" style="margin: 0;">2. Select Menu Item</label>
+              <input type="search" id="quick-mod-menu-search" class="form-input" placeholder="🔍 Search menu (e.g. Biscuit, Mac, Sauce, Tray)..." style="max-width: 280px; padding: 6px 10px; font-size: 0.82rem;">
+            </div>
+            <div id="quick-mod-cat-tabs" class="menu-cat-tabs">
+              <!-- Category filter pills loaded from CFA_MENU -->
+            </div>
             <div id="quick-sauce-presets-grid" class="quick-sauce-grid">
-              <!-- Fast sauce & drink presets loaded from CFA_MENU -->
+              <!-- Menu items loaded from CFA_MENU -->
             </div>
           </div>
 
-          <div class="form-row">
+          <div class="form-row" style="background: #F8FAFC; padding: 12px; border-radius: 10px; border: 1.5px solid #CBD5E1;">
             <div class="form-group">
-              <label class="form-label">Item Name *</label>
-              <input type="text" id="quick-mod-item-name" class="form-input" placeholder="e.g. Barbeque Sauce Packets" required>
+              <label class="form-label">3. Selected Item Name *</label>
+              <input type="text" id="quick-mod-item-name" class="form-input" placeholder="Select item above or type custom item..." required>
+              <input type="hidden" id="quick-mod-category" value="Breakfast">
+              <input type="hidden" id="quick-mod-unit" value="count">
             </div>
             <div class="form-group">
-              <label class="form-label">Quantity & Unit *</label>
-              <div style="display: flex; gap: 8px;">
-                <input type="number" id="quick-mod-qty" class="form-input" style="width: 85px;" value="50" min="1" required>
-                <input type="text" id="quick-mod-unit" class="form-input" value="Packets" placeholder="Packets, Gallons...">
+              <label class="form-label">4. Quantity *</label>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="number" id="quick-mod-qty" class="form-input" style="width: 95px; font-weight: 800; font-size: 1.1rem; text-align: center;" value="1" min="1" required>
+                <div class="qty-quick-btns">
+                  <button type="button" class="btn-qty-quick" onclick="window.CFA_APP.setQuickModQty(1)">1</button>
+                  <button type="button" class="btn-qty-quick" onclick="window.CFA_APP.setQuickModQty(5)">5</button>
+                  <button type="button" class="btn-qty-quick" onclick="window.CFA_APP.setQuickModQty(10)">10</button>
+                  <button type="button" class="btn-qty-quick" onclick="window.CFA_APP.setQuickModQty(25)">25</button>
+                  <button type="button" class="btn-qty-quick" onclick="window.CFA_APP.setQuickModQty(50)">50</button>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Category</label>
-            <select id="quick-mod-category" class="form-select">
-              <option value="Sauces">Sauces & Condiments</option>
-              <option value="Beverages">Beverages & Ice</option>
-              <option value="Trays">Catering Trays</option>
-              <option value="Sides">Sides & Salads</option>
-              <option value="Paper Goods">Paper Goods & Utensils</option>
-              <option value="General">General / Custom Item</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Customer Note / Special Request</label>
-            <textarea id="quick-mod-note" class="form-textarea" rows="2" placeholder="e.g. Customer called in: pack in separate brown bag with extra napkins"></textarea>
+            <label class="form-label">Customer Note / Special Request (Optional)</label>
+            <textarea id="quick-mod-note" class="form-textarea" rows="2" placeholder="e.g. Customer called in: pack in separate bag with extra napkins"></textarea>
           </div>
 
           <!-- Urgency Trigger -->

@@ -1268,25 +1268,80 @@ body:has(.modal-overlay.open) {
   gap: 12px;
 }
 
-/* Quick Sauce Preset Buttons in Modal */
+#quick-mod-modal .modal-dialog {
+  max-width: 720px;
+}
+
+/* Menu Category Filter Tabs & Item Picker in Quick Modification Modal */
+.menu-cat-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+
+.menu-cat-pill {
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+  border-radius: 99px;
+  padding: 5px 11px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.menu-cat-pill:hover {
+  background: #E2E8F0;
+}
+
+.menu-cat-pill.active {
+  background: #0F172A;
+  color: #FFFFFF;
+  border-color: #0F172A;
+}
+
 .quick-sauce-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 6px;
   margin-top: 4px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
 }
 
 .btn-sauce-preset {
-  background: #F8FAFC;
+  background: #FFFFFF;
   border: 1.5px solid #CBD5E1;
   border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.85rem;
+  padding: 7px 10px;
+  font-size: 0.8rem;
   font-weight: 700;
   color: #1E293B;
   cursor: pointer;
   text-align: left;
   transition: all 0.1s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.preset-item-name {
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.preset-item-cat {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748B;
 }
 
 .btn-sauce-preset:hover {
@@ -1299,6 +1354,33 @@ body:has(.modal-overlay.open) {
   background: var(--cfa-red);
   border-color: var(--cfa-red);
   color: #FFF;
+}
+
+.btn-sauce-preset.selected .preset-item-cat {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.qty-quick-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.btn-qty-quick {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #334155;
+  cursor: pointer;
+}
+
+.btn-qty-quick:hover {
+  background: #FEE2E2;
+  border-color: var(--cfa-red);
+  color: var(--cfa-red);
 }
 
 .urgency-toggle-card {

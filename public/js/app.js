@@ -589,7 +589,11 @@
     }
   }
 
-  // --- QUICK-ADD / EMERGENCY MODIFICATION MODAL (THE CORE WIFE'S FEATURE) ---
+  // --- QUICK-ADD / EMERGENCY MODIFICATION MODAL (FULL MENU PICKER + QUANTITY) ---
+  let quickModActiveCategory = 'All';
+  let quickModSearchTerm = '';
+  let quickModSelectedKey = '0-0';
+
   function openQuickModModal(orderId = null) {
     initAudio();
     selectedOrderIdForMod = orderId || (orders.length > 0 ? orders[0].id : null);
@@ -602,41 +606,114 @@
       </option>
     `).join('');
 
-    // Reset inputs
-    document.getElementById('quick-mod-item-name').value = 'Barbeque Sauce Packets';
-    document.getElementById('quick-mod-qty').value = '50';
-    document.getElementById('quick-mod-unit').value = 'Packets';
-    document.getElementById('quick-mod-category').value = 'Sauces';
-    document.getElementById('quick-mod-note').value = 'Customer called to add BBQ sauce for the group';
-    document.getElementById('quick-mod-urgency').checked = true;
+    quickModActiveCategory = 'All';
+    quickModSearchTerm = '';
+    const searchInput = document.getElementById('quick-mod-menu-search');
+    if (searchInput) searchInput.value = '';
 
-    // Render quick sauce preset buttons
-    const presetGrid = document.getElementById('quick-sauce-presets-grid');
-    if (window.QUICK_SAUCE_PRESETS) {
-      presetGrid.innerHTML = window.QUICK_SAUCE_PRESETS.map((p, idx) => `
-        <button type="button" class="btn-sauce-preset ${idx === 0 ? 'selected' : ''}"
-                onclick="window.CFA_APP.selectPreset(${idx})">
-          ${escapeHtml(p.label)}
-        </button>
-      `).join('');
-    }
+    // Default to first menu item
+    const firstCat = window.CFA_MENU && window.CFA_MENU[0];
+    const firstItem = firstCat && firstCat.items && firstCat.items[0];
+    document.getElementById('quick-mod-item-name').value = firstItem ? firstItem.name : 'Chick-fil-A Chicken Biscuit';
+    document.getElementById('quick-mod-qty').value = '1';
+    document.getElementById('quick-mod-unit').value = firstItem ? (firstItem.unit || 'count') : 'count';
+    document.getElementById('quick-mod-category').value = firstItem ? (firstItem.subCategory || firstCat.category) : 'Breakfast';
+    document.getElementById('quick-mod-note').value = '';
+    document.getElementById('quick-mod-urgency').checked = true;
+    quickModSelectedKey = '0-0';
+
+    renderQuickModCategoryTabs();
+    renderQuickModMenuItems();
 
     quickModModal.classList.add('open');
   }
 
-  function selectPreset(idx) {
-    const p = window.QUICK_SAUCE_PRESETS[idx];
-    if (!p) return;
+  function renderQuickModCategoryTabs() {
+    const tabsEl = document.getElementById('quick-mod-cat-tabs');
+    if (!tabsEl || !window.CFA_MENU) return;
 
-    document.getElementById('quick-mod-item-name').value = p.name;
-    document.getElementById('quick-mod-qty').value = p.qty;
-    document.getElementById('quick-mod-unit').value = p.unit;
-    document.getElementById('quick-mod-category').value = p.category;
+    const allTab = `<button type="button" class="menu-cat-pill ${quickModActiveCategory === 'All' ? 'active' : ''}" onclick="window.CFA_APP.selectMenuCategory('All')">All Menu</button>`;
+    const catTabs = window.CFA_MENU.map((cat, idx) => `
+      <button type="button" class="menu-cat-pill ${quickModActiveCategory === cat.category ? 'active' : ''}"
+              onclick="window.CFA_APP.selectMenuCategoryIndex(${idx})">
+        ${cat.icon} ${escapeHtml(cat.category)}
+      </button>
+    `).join('');
 
-    // Highlight button
-    document.querySelectorAll('.btn-sauce-preset').forEach((btn, i) => {
-      btn.classList.toggle('selected', i === idx);
+    tabsEl.innerHTML = allTab + catTabs;
+  }
+
+  function selectMenuCategory(catName) {
+    quickModActiveCategory = catName;
+    renderQuickModCategoryTabs();
+    renderQuickModMenuItems();
+  }
+
+  function selectMenuCategoryIndex(catIdx) {
+    const cat = window.CFA_MENU && window.CFA_MENU[catIdx];
+    if (!cat) return;
+    quickModActiveCategory = cat.category;
+    renderQuickModCategoryTabs();
+    renderQuickModMenuItems();
+  }
+
+  function renderQuickModMenuItems() {
+    const presetGrid = document.getElementById('quick-sauce-presets-grid');
+    if (!presetGrid || !window.CFA_MENU) return;
+
+    const q = quickModSearchTerm.trim().toLowerCase();
+    const buttonsHtml = [];
+
+    window.CFA_MENU.forEach((cat, catIdx) => {
+      if (quickModActiveCategory !== 'All' && cat.category !== quickModActiveCategory) return;
+
+      cat.items.forEach((item, itemIdx) => {
+        if (q && !item.name.toLowerCase().includes(q) && !(item.subCategory || '').toLowerCase().includes(q) && !cat.category.toLowerCase().includes(q)) {
+          return;
+        }
+        const key = `${catIdx}-${itemIdx}`;
+        const isSel = quickModSelectedKey === key;
+        buttonsHtml.push(`
+          <button type="button" class="btn-sauce-preset ${isSel ? 'selected' : ''}"
+                  onclick="window.CFA_APP.selectMenuItem(${catIdx}, ${itemIdx})">
+            <span class="preset-item-name">${escapeHtml(item.name)}</span>
+            <span class="preset-item-cat">${escapeHtml(item.subCategory || cat.category)}</span>
+          </button>
+        `);
+      });
     });
+
+    presetGrid.innerHTML = buttonsHtml.length > 0
+      ? buttonsHtml.join('')
+      : '<div style="grid-column: 1 / -1; padding: 12px; color: #64748B; text-align: center; font-size: 0.85rem;">No matching menu items found. You can also type a custom item name below.</div>';
+  }
+
+  function selectMenuItem(catIdx, itemIdx) {
+    const cat = window.CFA_MENU && window.CFA_MENU[catIdx];
+    const item = cat && cat.items && cat.items[itemIdx];
+    if (!item) return;
+
+    quickModSelectedKey = `${catIdx}-${itemIdx}`;
+    document.getElementById('quick-mod-item-name').value = item.name;
+    document.getElementById('quick-mod-unit').value = item.unit || 'count';
+    document.getElementById('quick-mod-category').value = item.subCategory || cat.category;
+
+    renderQuickModMenuItems();
+
+    // Immediately focus & highlight the Quantity input so user can type the quantity
+    const qtyInput = document.getElementById('quick-mod-qty');
+    if (qtyInput) {
+      qtyInput.focus();
+      qtyInput.select();
+    }
+  }
+
+  function setQuickModQty(val) {
+    const qtyInput = document.getElementById('quick-mod-qty');
+    if (qtyInput) {
+      qtyInput.value = String(val);
+      qtyInput.focus();
+    }
   }
 
   async function submitQuickMod(event) {
@@ -702,17 +779,17 @@
     const container = document.getElementById('new-order-menu-container');
     if (!window.CFA_MENU) return;
 
-    container.innerHTML = window.CFA_MENU.map(cat => `
+    container.innerHTML = window.CFA_MENU.map((cat, catIdx) => `
       <div style="margin-bottom: 14px;">
         <div style="font-weight: 800; font-size: 0.95rem; margin-bottom: 6px; color: #1E293B;">
           ${cat.icon} ${escapeHtml(cat.category)}
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
-          ${cat.items.map(item => `
+          ${cat.items.map((item, itemIdx) => `
             <button type="button" class="btn-card-action" style="justify-content: space-between; text-align: left;"
-                    onclick="window.CFA_APP.addItemToNewOrder('${escapeHtml(item.name)}', ${item.defaultQty}, '${escapeHtml(item.unit)}', '${escapeHtml(cat.category)}')">
+                    onclick="window.CFA_APP.addMenuItemByIndex(${catIdx}, ${itemIdx})">
               <span>${escapeHtml(item.name)}</span>
-              <span style="color: var(--cfa-red); font-weight: 800;">+${item.defaultQty}</span>
+              <span style="color: var(--cfa-red); font-weight: 800;">+${item.defaultQty || 1}</span>
             </button>
           `).join('')}
         </div>
@@ -720,6 +797,13 @@
     `).join('');
 
     renderNewOrderItemsList();
+  }
+
+  function addMenuItemByIndex(catIdx, itemIdx) {
+    const cat = window.CFA_MENU && window.CFA_MENU[catIdx];
+    const item = cat && cat.items && cat.items[itemIdx];
+    if (!item) return;
+    addItemToNewOrder(item.name, item.defaultQty || 1, item.unit || 'count', item.subCategory || cat.category);
   }
 
   function addItemToNewOrder(name, quantity, unit, category) {
@@ -987,6 +1071,15 @@
       });
     }
 
+    // Menu search inside Quick Modification modal
+    const quickModMenuSearch = document.getElementById('quick-mod-menu-search');
+    if (quickModMenuSearch) {
+      quickModMenuSearch.addEventListener('input', () => {
+        quickModSearchTerm = quickModMenuSearch.value || '';
+        renderQuickModMenuItems();
+      });
+    }
+
     // Modal Close buttons
     document.querySelectorAll('.modal-overlay').forEach(modal => {
       modal.addEventListener('click', e => {
@@ -1022,7 +1115,11 @@
     openQuickModModal,
     openNewOrderModal,
     viewOrderHistory,
-    selectPreset,
+    selectMenuCategory,
+    selectMenuCategoryIndex,
+    selectMenuItem,
+    setQuickModQty,
+    addMenuItemByIndex,
     addItemToNewOrder,
     removeItemFromNewOrder
   };
