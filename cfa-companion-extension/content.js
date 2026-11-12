@@ -141,6 +141,13 @@
     return /\b(error|cancell?ed|failed|declined|void)\b/i.test(statusStr || '');
   }
 
+  function isPastOrderTime(isoStr) {
+    if (!isoStr) return false;
+    const t = new Date(isoStr).getTime();
+    if (isNaN(t)) return false;
+    return t < Date.now();
+  }
+
   function cleanGuestName(raw) {
     if (!raw) return '';
     return raw
@@ -665,7 +672,7 @@
       if (!/\$\d|\b(Pickup|Delivery)\b/i.test(text)) continue;
 
       const parsed = parseRowBlockText(text);
-      if (!parsed) continue;
+      if (!parsed || isPastOrderTime(parsed.pickupIso)) continue;
 
       const uniqueKey = `${parsed.guestName.toLowerCase()}|${parsed.promisedDate.toLowerCase()}`;
       if (seenKeys.has(uniqueKey)) continue;
@@ -712,7 +719,7 @@
         const combinedChunk = beforeChunk + afterChunk;
 
         const parsed = parseRowBlockText(combinedChunk);
-        if (parsed) {
+        if (parsed && !isPastOrderTime(parsed.pickupIso)) {
           const uniqueKey = `${parsed.guestName.toLowerCase()}|${parsed.promisedDate.toLowerCase()}`;
           if (!seenKeys.has(uniqueKey)) {
             seenKeys.add(uniqueKey);
@@ -724,6 +731,7 @@
     }
 
     for (const r of iframeRowsData) {
+      if (isPastOrderTime(r.pickupIso)) continue;
       const uniqueKey = `${r.guestName.toLowerCase()}|${r.promisedDate.toLowerCase()}`;
       if (!seenKeys.has(uniqueKey)) {
         seenKeys.add(uniqueKey);
@@ -810,6 +818,11 @@
       promisedBadge.textContent = finalOrderNum;
     }
     typeSelect.value = finalType;
+
+    // Never auto-sync old orders whose pickup/delivery time is before the current time!
+    if (isPastOrderTime(finalPickupIso) && !matchedKds) {
+      return summaryData;
+    }
 
     // If this order is in Error or Cancelled status and NOT already on the KDS, do not auto-sync it!
     if (isBadPaymentStatus(finalPaymentStatus) && !matchedKds) {
@@ -985,6 +998,10 @@
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
+      if (isPastOrderTime(row.pickupIso)) {
+        continue;
+      }
+
       const alreadyOnKds = kdsOrders.find(
         (o) =>
           o.order_number.toLowerCase() === (row.orderNumber || '').toLowerCase() ||
@@ -1039,6 +1056,10 @@
       if (orderItems.length > 0) itemsCapturedCount += orderItems.length;
 
       const finalTimeStr = (summary && summary.pickupTimeStr) || row.promisedDate;
+      const finalPickupIso = parsePromisedDateToIso(finalTimeStr) || row.pickupIso;
+      if (isPastOrderTime(finalPickupIso) && !alreadyOnKds) {
+        continue;
+      }
       const finalType = (summary && summary.orderType) || row.method;
 
       const res = await callKdsApi({
@@ -1048,7 +1069,7 @@
           customer_name: (summary && summary.guestName) || row.guestName,
           customer_phone: (summary && summary.contactPhone) || '',
           organization: (summary && summary.deliveryAddress) || '',
-          pickup_time: parsePromisedDateToIso(finalTimeStr),
+          pickup_time: finalPickupIso,
           order_type: finalType,
           payment_status: effectivePayStatus,
           special_notes: (summary && summary.specialNotes) || '',

@@ -598,6 +598,19 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      // If the order is NOT already on the KDS and its pickup_time is before current time, DO NOT SYNC IT!
+      const incomingTimeMs = data.pickup_time ? new Date(data.pickup_time).getTime() : NaN;
+      if (!existing && !isNaN(incomingTimeMs) && incomingTimeMs < Date.now()) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          mode: 'skipped_past_order',
+          skipped: true,
+          reason: 'Order pickup time is in the past'
+        }));
+        return;
+      }
+
       if (existing) {
         // Order exists: update metadata and optionally append quick-add items or flash alert
         const customerName = data.customer_name || existing.customer_name;
