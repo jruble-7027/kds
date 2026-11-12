@@ -53,17 +53,22 @@
       <span>📱 <strong>Kitchen Touchscreen Setup:</strong> Open this URL on any iPad or kitchen tablet: <code>http://localhost:3000?view=kitchen</code></span>
     </div>
 
-    <!-- Subbar: Filters & Fast Action Buttons -->
+    <!-- Subbar: Filters, Search & Fast Action Buttons -->
     <div class="header-subbar">
       <div class="filter-group">
-        <button class="filter-tab active" data-filter="all">All Active</button>
-        <button class="filter-tab" data-filter="due_soon">🔥 Due Soon (&lt;45m)</button>
-        <button class="filter-tab" data-filter="prep">👨‍🍳 Needs Prep</button>
-        <button class="filter-tab" data-filter="ready">✓ Ready for Pickup</button>
-        <button class="filter-tab" data-filter="completed">Fulfilled</button>
+        <button class="filter-tab active" data-filter="all">All Active <span class="tab-count" id="count-all">0</span></button>
+        <button class="filter-tab" data-filter="today">📅 Today <span class="tab-count" id="count-today">0</span></button>
+        <button class="filter-tab" data-filter="due_soon">🔥 Due Soon <span class="tab-count" id="count-due_soon">0</span></button>
+        <button class="filter-tab" data-filter="prep">👨‍🍳 Needs Prep <span class="tab-count" id="count-prep">0</span></button>
+        <button class="filter-tab" data-filter="ready">✓ Ready <span class="tab-count" id="count-ready">0</span></button>
+        <button class="filter-tab" data-filter="completed">Fulfilled <span class="tab-count" id="count-completed">0</span></button>
       </div>
 
-      <div style="display: flex; gap: 10px;">
+      <div class="subbar-right-actions">
+        <div class="search-box-wrap">
+          <input type="search" id="order-search-input" class="order-search-input" placeholder="🔍 Search guest, #order, or item..." />
+        </div>
+
         <!-- Emergency Modification Button (Solves the wife's exact issue!) -->
         <button class="btn-alert-pulse" onclick="window.CFA_APP.openQuickModModal()">
           <span>⚡</span>

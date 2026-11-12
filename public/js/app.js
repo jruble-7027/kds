@@ -4,7 +4,8 @@
 
   // State
   let currentView = 'desk'; // 'desk' or 'kitchen'
-  let currentFilter = 'all'; // 'all', 'due_soon', 'prep', 'ready', 'completed'
+  let currentFilter = 'all'; // 'all', 'today', 'due_soon', 'prep', 'ready', 'completed'
+  let searchQuery = '';
   let orders = [];
   let sseSource = null;
   let audioEnabled = true;
@@ -23,6 +24,7 @@
   const historyModal = document.getElementById('history-modal');
   const toastContainer = document.getElementById('toast-container');
   const localIpBanner = document.getElementById('local-ip-banner');
+  const orderSearchInput = document.getElementById('order-search-input');
 
   // --- AUDIO SYNTHESIZER (Web Audio API) ---
   // Generates a crisp, warm Chick-fil-A kitchen notification bell/chime
@@ -108,15 +110,28 @@
   }
 
   // --- TIME FORMATTING & COUNTDOWN HELPERS ---
+  function isSameCalendarDay(d1, d2) {
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  }
+
   function formatPickupTime(isoString) {
     if (!isoString) return 'Not set';
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return String(isoString);
-    const datePart = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const now = new Date();
     const timePart = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (isSameCalendarDay(d, now)) {
+      return `Today • ${timePart}`;
+    }
+    const datePart = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
     return `${datePart} • ${timePart}`;
   }
 
+  // Concise countdown pill (no duplicate date/time string)
   function getCountdownStatus(isoString) {
     if (!isoString) return { text: '', cls: 'due-later' };
     const d = new Date(isoString);
@@ -125,25 +140,21 @@
     const now = new Date();
     const diffMs = d - now;
     const diffMins = Math.round(diffMs / 60000);
+    const isSameDay = isSameCalendarDay(d, now);
 
-    const shortDate = `${d.getMonth() + 1}/${d.getDate()}`;
-    const shortWeekday = d.toLocaleDateString([], { weekday: 'short' });
-    const shortTime = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const isSameDay =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
+    // Calendar day difference for future dates
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((startOfTarget - startOfToday) / 86400000);
 
     if (diffMins < 0) {
       return {
-        text: isSameDay
-          ? `⚠️ PAST DUE (Today ${shortDate} @ ${shortTime})`
-          : `⚠️ PAST DUE (${shortWeekday} ${shortDate} @ ${shortTime})`,
+        text: isSameDay ? '⚠️ Past Due Today' : `⚠️ Past Due (${d.getMonth() + 1}/${d.getDate()})`,
         cls: 'due-soon'
       };
     } else if (diffMins <= 45) {
       return {
-        text: `🔥 DUE IN ${diffMins}m (${shortDate} @ ${shortTime})`,
+        text: `🔥 DUE IN ${diffMins}m`,
         cls: 'due-soon'
       };
     } else if (isSameDay) {
@@ -151,15 +162,47 @@
       const mins = diffMins % 60;
       const dur = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
       return {
-        text: `⏰ Due Today ${shortDate} @ ${shortTime} (in ${dur})`,
+        text: `⏰ Due in ${dur}`,
+        cls: 'due-later'
+      };
+    } else if (diffDays === 1) {
+      return {
+        text: '📅 Tomorrow',
         cls: 'due-later'
       };
     } else {
       return {
-        text: `📅 Due ${shortWeekday}, ${shortDate} @ ${shortTime}`,
+        text: `📅 In ${diffDays} Days`,
         cls: 'due-later'
       };
     }
+  }
+
+  function getOrderDateGroupKey(isoString) {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '9999-99-99';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function formatDateSectionTitle(isoString, count) {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return { label: 'Unscheduled Orders', badge: `${count} Order${count === 1 ? '' : 's'}`, isToday: false };
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((startOfTarget - startOfToday) / 86400000);
+
+    const fullDate = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    if (diffDays === 0) {
+      return { label: `📌 TODAY — ${fullDate}`, badge: `${count} Order${count === 1 ? '' : 's'} Today`, isToday: true };
+    }
+    if (diffDays === 1) {
+      return { label: `📅 TOMORROW — ${fullDate}`, badge: `${count} Order${count === 1 ? '' : 's'}`, isToday: false };
+    }
+    if (diffDays < 0) {
+      return { label: `⏳ EARLIER UNFULFILLED — ${fullDate}`, badge: `${count} Order${count === 1 ? '' : 's'}`, isToday: false };
+    }
+    return { label: `📅 UPCOMING — ${fullDate}`, badge: `${count} Order${count === 1 ? '' : 's'}`, isToday: false };
   }
 
   function escapeHtml(str) {
@@ -181,15 +224,57 @@
     }
   }
 
+  function updateFilterTabCounts() {
+    const now = new Date();
+    const activeOrders = orders.filter(o => o.status !== 'completed');
+    const todayOrders = activeOrders.filter(o => isSameCalendarDay(new Date(o.pickup_time), now));
+    const dueSoonOrders = activeOrders.filter(o => {
+      const diffMs = new Date(o.pickup_time) - now;
+      return diffMs > -600000 && diffMs <= 45 * 60000;
+    });
+    const prepOrders = orders.filter(o => o.status === 'new' || o.status === 'in_prep');
+    const readyOrders = orders.filter(o => o.status === 'ready');
+    const completedOrders = orders.filter(o => o.status === 'completed');
+
+    const setEl = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(val);
+    };
+    setEl('count-all', activeOrders.length);
+    setEl('count-today', todayOrders.length);
+    setEl('count-due_soon', dueSoonOrders.length);
+    setEl('count-prep', prepOrders.length);
+    setEl('count-ready', readyOrders.length);
+    setEl('count-completed', completedOrders.length);
+  }
+
   function renderOrders() {
     ordersGrid.innerHTML = '';
+    updateFilterTabCounts();
 
-    // Apply Filter
+    const now = new Date();
+    const q = searchQuery.trim().toLowerCase();
+
+    // Apply Filter + Search
     const filtered = orders.filter(order => {
-      if (currentFilter === 'all') return true;
+      if (q) {
+        const matchGuest = (order.customer_name || '').toLowerCase().includes(q);
+        const matchNum = (order.order_number || '').toLowerCase().includes(q);
+        const matchOrg = (order.organization || '').toLowerCase().includes(q);
+        const matchPhone = (order.customer_phone || '').toLowerCase().includes(q);
+        const matchItem = Array.isArray(order.items) && order.items.some(i => (i.name || '').toLowerCase().includes(q));
+        if (!matchGuest && !matchNum && !matchOrg && !matchPhone && !matchItem) {
+          return false;
+        }
+      }
+
+      if (currentFilter === 'all') return order.status !== 'completed';
+      if (currentFilter === 'today') {
+        return order.status !== 'completed' && isSameCalendarDay(new Date(order.pickup_time), now);
+      }
       if (currentFilter === 'due_soon') {
-        const diffMs = new Date(order.pickup_time) - new Date();
-        return diffMs > -600000 && diffMs <= 45 * 60000;
+        const diffMs = new Date(order.pickup_time) - now;
+        return order.status !== 'completed' && diffMs > -600000 && diffMs <= 45 * 60000;
       }
       if (currentFilter === 'prep') return order.status === 'new' || order.status === 'in_prep';
       if (currentFilter === 'ready') return order.status === 'ready';
@@ -201,24 +286,58 @@
       emptyState.style.display = 'block';
     } else {
       emptyState.style.display = 'none';
+
+      // Group filtered orders by date so Today, Tomorrow, and Future dates have clear section headers
+      const groups = new Map();
       filtered.forEach(order => {
-        const card = createOrderCardElement(order);
-        ordersGrid.appendChild(card);
+        const key = getOrderDateGroupKey(order.pickup_time);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(order);
+      });
+
+      groups.forEach((groupOrders) => {
+        const secInfo = formatDateSectionTitle(groupOrders[0].pickup_time, groupOrders.length);
+        const divider = document.createElement('div');
+        divider.className = `date-section-divider ${secInfo.isToday ? 'is-today' : ''}`;
+        divider.innerHTML = `
+          <span class="date-section-title">${escapeHtml(secInfo.label)}</span>
+          <span class="date-section-badge">${escapeHtml(secInfo.badge)}</span>
+        `;
+        ordersGrid.appendChild(divider);
+
+        groupOrders.forEach(order => {
+          const card = createOrderCardElement(order);
+          ordersGrid.appendChild(card);
+        });
       });
     }
+  }
+
+  function getStatusMeta(status) {
+    if (status === 'in_prep') return { label: '👨‍🍳 IN PREP', cls: 'status-in_prep' };
+    if (status === 'ready') return { label: '✅ READY', cls: 'status-ready' };
+    if (status === 'completed') return { label: '✓ FULFILLED', cls: 'status-completed' };
+    return { label: '🆕 NEW', cls: 'status-new' };
   }
 
   // Create Order Card Component
   function createOrderCardElement(order) {
     const card = document.createElement('div');
     const hasAlert = order.has_unacknowledged_change === 1;
-    card.className = `order-card ${hasAlert ? 'has-alert' : ''}`;
+    card.className = `order-card status-card-${order.status || 'new'} ${hasAlert ? 'has-alert' : ''}`;
     card.setAttribute('data-order-id', order.id);
 
     const timing = getCountdownStatus(order.pickup_time);
+    const statusMeta = getStatusMeta(order.status);
     const verifiedCount = order.items ? order.items.filter(i => i.is_verified === 1).length : 0;
     const totalCount = order.items ? order.items.length : 0;
     const progressPercent = totalCount > 0 ? Math.round((verifiedCount / totalCount) * 100) : 0;
+    const allPacked = totalCount > 0 && verifiedCount === totalCount;
+    const packedLabel = totalCount === 0
+      ? 'No Items Yet'
+      : allPacked
+      ? `✅ All ${totalCount} Packed`
+      : `📦 ${verifiedCount} / ${totalCount} Packed`;
 
     let itemsHtml = '';
     if (order.items && order.items.length > 0) {
@@ -269,6 +388,7 @@
           <div class="order-ref">
             <span class="order-num">${escapeHtml(order.order_number)}</span>
             <span class="order-type-badge ${order.order_type.toLowerCase()}">${escapeHtml(order.order_type)}</span>
+            <span class="status-pill ${statusMeta.cls}">${statusMeta.label}</span>
           </div>
           <div class="customer-name">${escapeHtml(order.customer_name)}</div>
           ${order.customer_phone ? `<div class="customer-org" style="font-weight:700; color:#0F172A; margin-top:2px;">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
@@ -277,6 +397,7 @@
         <div class="timing-badge">
           <div class="time-val" style="font-size:0.95rem;">${formatPickupTime(order.pickup_time)}</div>
           <div class="time-countdown ${timing.cls}">${timing.text}</div>
+          <div class="packed-pill ${allPacked ? 'all-packed' : ''}">${packedLabel}</div>
         </div>
       </div>
 
@@ -823,6 +944,14 @@
         renderOrders();
       });
     });
+
+    // Quick search input
+    if (orderSearchInput) {
+      orderSearchInput.addEventListener('input', () => {
+        searchQuery = orderSearchInput.value || '';
+        renderOrders();
+      });
+    }
 
     // Modal Close buttons
     document.querySelectorAll('.modal-overlay').forEach(modal => {

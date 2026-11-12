@@ -200,18 +200,103 @@ body {
 .filter-tab {
   background: #FFF;
   border: 1px solid #E2E8F0;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.84rem;
+  font-weight: 700;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-tab .tab-count {
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 99px;
 }
 
 .filter-tab.active {
   background: var(--cfa-red);
   color: #FFF;
+  border-color: var(--cfa-red);
+}
+
+.filter-tab.active .tab-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFF;
+}
+
+.subbar-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.order-search-input {
+  padding: 8px 12px;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  min-width: 220px;
+  outline: none;
+  background: #FFF;
+  color: #0F172A;
+}
+
+.order-search-input:focus {
+  border-color: var(--cfa-red);
+  box-shadow: 0 0 0 3px rgba(229, 23, 63, 0.12);
+}
+
+/* Full-width Date Group Divider inside .orders-grid */
+.date-section-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin-top: 6px;
+  background: #E2E8F0;
+  border-left: 5px solid #475569;
+  border-radius: 8px;
+}
+
+.date-section-divider.is-today {
+  background: #FEF2F2;
+  border-left-color: var(--cfa-red);
+}
+
+.date-section-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: 0.2px;
+}
+
+.date-section-divider.is-today .date-section-title {
+  color: #991B1B;
+}
+
+.date-section-badge {
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: #FFFFFF;
+  color: #334155;
+  border: 1px solid #CBD5E1;
+}
+
+.date-section-divider.is-today .date-section-badge {
+  background: var(--cfa-red);
+  color: #FFFFFF;
   border-color: var(--cfa-red);
 }
 
@@ -415,6 +500,89 @@ body {
 .order-type-badge.delivery {
   background: #FEF3C7;
   color: #B45309;
+}
+
+/* Status Pill on Card Header */
+.status-pill {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.status-pill.status-new {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.status-pill.status-in_prep {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.status-pill.status-ready {
+  background: #DCFCE7;
+  color: #166534;
+  border: 1px solid #86EFAC;
+}
+
+.status-pill.status-completed {
+  background: #E2E8F0;
+  color: #475569;
+}
+
+.order-card.status-card-in_prep {
+  border-color: #F59E0B;
+}
+
+.order-card.status-card-ready {
+  border-color: #10B981;
+}
+
+/* Packed Item Progress Pill */
+.packed-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-top: 4px;
+  background: #F1F5F9;
+  color: #334155;
+  border: 1px solid #CBD5E1;
+}
+
+.packed-pill.all-packed {
+  background: #DCFCE7;
+  color: #166534;
+  border-color: #86EFAC;
+}
+
+body.kitchen-mode .date-section-divider {
+  background: #1E293B;
+  border-left-color: #64748B;
+}
+
+body.kitchen-mode .date-section-divider.is-today {
+  background: #3B1219;
+  border-left-color: #EF4444;
+}
+
+body.kitchen-mode .date-section-title {
+  color: #F8FAFC;
+}
+
+body.kitchen-mode .date-section-divider.is-today .date-section-title {
+  color: #FECACA;
+}
+
+body.kitchen-mode .order-search-input {
+  background: #1E293B;
+  border-color: #334155;
+  color: #F8FAFC;
 }
 
 .customer-name {
