@@ -316,7 +316,13 @@
     syncFocusBackdrop();
   }
 
-  function getStatusMeta(status) {
+  function getStatusMeta(status, paymentStatus = '') {
+    if (status === 'cancelled' || /\b(cancell?ed|void)\b/i.test(paymentStatus)) {
+      return { label: '🚫 CANCELLED', cls: 'status-cancelled' };
+    }
+    if (status === 'error' || /\b(error|failed|declined)\b/i.test(paymentStatus)) {
+      return { label: '⚠️ PAYMENT ERROR', cls: 'status-error' };
+    }
     if (status === 'in_prep') return { label: '👨‍🍳 IN PREP', cls: 'status-in_prep' };
     if (status === 'ready') return { label: '✅ READY', cls: 'status-ready' };
     if (status === 'completed') return { label: '✓ FULFILLED', cls: 'status-completed' };
@@ -335,6 +341,10 @@
 
   function toggleFocusOrder(orderId, event) {
     if (event) event.stopPropagation();
+    const targetOrder = orders.find(o => o.id === orderId);
+    if (targetOrder && targetOrder.is_new_unseen === 1) {
+      touchOrder(orderId);
+    }
     if (!orderId || focusedOrderId === orderId) {
       focusedOrderId = null;
     } else {
@@ -348,11 +358,30 @@
     const card = document.createElement('div');
     const hasAlert = order.has_unacknowledged_change === 1;
     const isFocused = focusedOrderId === order.id;
-    card.className = `order-card status-card-${order.status || 'new'} ${hasAlert ? 'has-alert' : ''} ${isFocused ? 'focused-card' : ''}`;
+    const isCancelled = order.status === 'cancelled' || /\b(cancell?ed|void)\b/i.test(order.payment_status || '');
+    const isError = !isCancelled && (order.status === 'error' || /\b(error|failed|declined)\b/i.test(order.payment_status || ''));
+    const isNewUnseen = !isCancelled && !isError && !hasAlert && order.is_new_unseen === 1;
+
+    card.className = [
+      'order-card',
+      `status-card-${order.status || 'new'}`,
+      hasAlert ? 'has-alert' : '',
+      isCancelled ? 'is-cancelled-order' : '',
+      isError ? 'is-error-order' : '',
+      isNewUnseen ? 'is-new-unseen' : '',
+      isFocused ? 'focused-card' : ''
+    ].filter(Boolean).join(' ');
     card.setAttribute('data-order-id', order.id);
 
+    // If this is a newly arrived Bright Green order, touching anywhere on the card clears the green highlight!
+    if (isNewUnseen) {
+      card.addEventListener('click', () => {
+        touchOrder(order.id);
+      }, { once: true });
+    }
+
     const timing = getCountdownStatus(order.pickup_time);
-    const statusMeta = getStatusMeta(order.status);
+    const statusMeta = getStatusMeta(order.status, order.payment_status);
     const verifiedCount = order.items ? order.items.filter(i => i.is_verified === 1).length : 0;
     const totalCount = order.items ? order.items.length : 0;
     const progressPercent = totalCount > 0 ? Math.round((verifiedCount / totalCount) * 100) : 0;
@@ -395,7 +424,29 @@
     }
 
     card.innerHTML = `
-      ${hasAlert ? `
+      ${isCancelled ? `
+        <div class="alert-banner cancelled-banner">
+          <div class="alert-banner-text">
+            <span class="alert-banner-icon">🚫</span>
+            <span>${escapeHtml(order.alert_message || '🚫 ORDER CANCELLED IN CMT — DO NOT PREP!')}</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            ${hasAlert ? `<button class="btn-acknowledge-touch" onclick="window.CFA_APP.acknowledgeAlert('${order.id}', event)">✓ SILENCE</button>` : ''}
+            <button class="btn-acknowledge-touch" onclick="window.CFA_APP.deleteOrder('${order.id}', event)">🗑️ REMOVE</button>
+          </div>
+        </div>
+      ` : isError ? `
+        <div class="alert-banner error-banner">
+          <div class="alert-banner-text">
+            <span class="alert-banner-icon">⚠️</span>
+            <span>${escapeHtml(order.alert_message || '⚠️ PAYMENT ERROR IN CMT — HOLD PREP!')}</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            ${hasAlert ? `<button class="btn-acknowledge-touch" onclick="window.CFA_APP.acknowledgeAlert('${order.id}', event)">✓ ACKNOWLEDGE</button>` : ''}
+            <button class="btn-acknowledge-touch" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'new')">✓ CLEAR ERROR</button>
+          </div>
+        </div>
+      ` : hasAlert ? `
         <div class="alert-banner">
           <div class="alert-banner-text">
             <span class="alert-banner-icon">🔔</span>
@@ -403,6 +454,16 @@
           </div>
           <button class="btn-acknowledge-touch" onclick="window.CFA_APP.acknowledgeAlert('${order.id}', event)">
             ✓ TAP TO ACKNOWLEDGE
+          </button>
+        </div>
+      ` : isNewUnseen ? `
+        <div class="new-order-green-banner" onclick="window.CFA_APP.touchOrder('${order.id}', event)">
+          <div class="alert-banner-text">
+            <span>🟢</span>
+            <span>NEW ORDER ARRIVED — TAP CARD TO ACKNOWLEDGE</span>
+          </div>
+          <button class="btn-acknowledge-green" onclick="window.CFA_APP.touchOrder('${order.id}', event)">
+            ✓ GOT IT
           </button>
         </div>
       ` : ''}
@@ -415,7 +476,7 @@
             ${statusMeta ? `<span class="status-pill ${statusMeta.cls}">${statusMeta.label}</span>` : ''}
             ${isFocused ? `<span class="focus-toggle-pill active">✕ Close Full View</span>` : ''}
           </div>
-          <div class="customer-name">${escapeHtml(order.customer_name)}</div>
+          <div class="customer-name ${isCancelled ? 'cancelled-text' : ''}">${escapeHtml(order.customer_name)}</div>
           ${order.customer_phone ? `<div class="customer-org customer-phone">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
           ${order.organization ? `<div class="customer-org customer-delivery">📍 Delivery: ${escapeHtml(order.organization)}</div>` : ''}
         </div>
@@ -451,9 +512,14 @@
         <button class="btn-card-action btn-delete-action" onclick="window.CFA_APP.deleteOrder('${order.id}', event)" title="Cancel & Delete Order">
           🗑️ Delete
         </button>
-        ${order.status === 'new' ? `
+        ${(order.status === 'new' || !order.status) ? `
           <button class="btn-card-action primary" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'in_prep')">
             Start Prep
+          </button>
+        ` : ''}
+        ${(order.status === 'error' || order.status === 'cancelled') ? `
+          <button class="btn-card-action" style="background: #F59E0B; color: #0F172A; border-color: #F59E0B; font-weight: 800;" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'new')">
+            ↺ Restore
           </button>
         ` : ''}
         ${order.status === 'in_prep' ? `
@@ -534,6 +600,40 @@
     } catch (err) {
       console.error('Error acknowledging alert:', err);
     }
+  }
+
+  // Touch a newly arrived Bright Green order to clear its 'is_new_unseen' highlight
+  async function touchOrder(orderId, event) {
+    if (event) event.stopPropagation();
+    const target = orders.find(o => o.id === orderId);
+    if (!target || target.is_new_unseen !== 1) return;
+
+    // Optimistic UI update so the green glow turns normal immediately on touch
+    target.is_new_unseen = 0;
+    renderOrders();
+
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/touch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.order) updateOrderInList(data.order);
+      }
+    } catch (err) {
+      console.error('Error touching order:', err);
+    }
+  }
+
+  // Flag selected order in Quick-Mod modal as Payment Error or Cancelled
+  async function flagSelectedOrderStatus(status) {
+    const selectEl = document.getElementById('quick-mod-order-select');
+    const orderId = selectEl ? selectEl.value : selectedOrderIdForMod;
+    if (!orderId) return;
+    await setOrderStatus(orderId, status);
+    quickModModal.classList.remove('open');
+    syncBodyScrollLock();
   }
 
   // Set Order Status
@@ -1186,6 +1286,8 @@
   window.CFA_APP = {
     toggleItemVerify,
     acknowledgeAlert,
+    touchOrder,
+    flagSelectedOrderStatus,
     setOrderStatus,
     deleteOrder,
     toggleFocusOrder,

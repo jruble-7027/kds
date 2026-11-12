@@ -48,7 +48,9 @@ db.exec(`
     order_type TEXT DEFAULT 'Pickup',
     guest_count INTEGER DEFAULT 1,
     special_notes TEXT,
-    status TEXT DEFAULT 'new', -- 'new', 'in_prep', 'ready', 'completed', 'cancelled'
+    status TEXT DEFAULT 'new', -- 'new', 'in_prep', 'ready', 'completed', 'cancelled', 'error'
+    payment_status TEXT DEFAULT 'Payment Received',
+    is_new_unseen INTEGER DEFAULT 0,
     has_unacknowledged_change INTEGER DEFAULT 0,
     alert_message TEXT,
     created_at TEXT NOT NULL,
@@ -82,6 +84,14 @@ db.exec(`
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
   );
 `);
+
+// Safe column migrations for existing catering.db files
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'Payment Received';");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN is_new_unseen INTEGER DEFAULT 0;");
+} catch (e) {}
 
 // Sample Data Seeder if empty
 function seedIfEmpty() {
@@ -218,9 +228,9 @@ function getFullOrder(orderId) {
   return { ...order, items, logs };
 }
 
-// Helper: Get all orders
+// Helper: Get all orders (including already-synced orders that entered 'cancelled' or 'error' status so the kitchen sees the warning banner until removed)
 function getAllOrders() {
-  const orders = db.prepare("SELECT * FROM orders WHERE status != 'cancelled' ORDER BY pickup_time ASC").all();
+  const orders = db.prepare('SELECT * FROM orders ORDER BY pickup_time ASC').all();
   return orders.map(order => {
     const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY is_recently_added DESC, category ASC, name ASC').all(order.id);
     const logs = db.prepare('SELECT * FROM order_activity_logs WHERE order_id = ? ORDER BY created_at DESC LIMIT 5').all(order.id);
@@ -513,12 +523,13 @@ const server = http.createServer(async (req, res) => {
       const orderNumber = data.order_number || `#CFA-${randomNum}`;
 
       db.prepare(`
-        INSERT INTO orders (id, order_number, customer_name, customer_phone, organization, pickup_time, order_type, guest_count, special_notes, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO orders (id, order_number, customer_name, customer_phone, organization, pickup_time, order_type, guest_count, special_notes, status, payment_status, is_new_unseen, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).run(
         id, orderNumber, data.customer_name || 'Valued Guest', data.customer_phone || '',
         data.organization || '', data.pickup_time || now, data.order_type || 'Pickup',
-        Number(data.guest_count) || 1, data.special_notes || '', 'new', now, now
+        Number(data.guest_count) || 1, data.special_notes || '', 'new',
+        data.payment_status || 'Payment Received', now, now
       );
 
       // Insert items if provided
@@ -566,9 +577,26 @@ const server = http.createServer(async (req, res) => {
       const orderNumber = (data.order_number || '').trim() || `#CFA-${Math.floor(1000 + Math.random() * 9000)}`;
 
       const customerNameParam = (data.customer_name || '').trim();
+      const incomingPaymentStatus = (data.payment_status || '').trim();
+      const isCancelledPayment = /\b(cancell?ed|void)\b/i.test(incomingPaymentStatus);
+      const isErrorPayment = /\b(error|failed|declined)\b/i.test(incomingPaymentStatus);
+      const isBadPayment = isCancelledPayment || isErrorPayment;
+
       const existing = db.prepare(
         'SELECT * FROM orders WHERE order_number = ? OR (LOWER(customer_name) = LOWER(?) AND customer_name != \'\') LIMIT 1'
       ).get(orderNumber, customerNameParam);
+
+      // If the order is NOT already synced on the KDS and has "Error" or "Cancelled" payment status, DO NOT SYNC IT!
+      if (!existing && isBadPayment) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          mode: 'skipped_bad_payment',
+          skipped: true,
+          reason: incomingPaymentStatus
+        }));
+        return;
+      }
 
       if (existing) {
         // Order exists: update metadata and optionally append quick-add items or flash alert
@@ -579,6 +607,7 @@ const server = http.createServer(async (req, res) => {
         const orderType = data.order_type || existing.order_type;
         const guestCount = Number(data.guest_count) || existing.guest_count;
         const specialNotes = data.special_notes !== undefined ? data.special_notes : existing.special_notes;
+        const nextPaymentStatus = incomingPaymentStatus || existing.payment_status || 'Payment Received';
 
         const itemsAdded = [];
 
@@ -612,22 +641,36 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        const shouldFlash = data.flash_kitchen === true && (itemsAdded.length > 0 || Boolean(data.custom_note));
-        const alertMsg = itemsAdded.length > 0
+        // If an already-synced order transitions to Cancelled or Error on CFA Home, immediately alert the Kitchen!
+        let nextStatus = existing.status;
+        let badPaymentAlertMsg = '';
+        if (isCancelledPayment) {
+          nextStatus = 'cancelled';
+          badPaymentAlertMsg = `🚫 ORDER CANCELLED IN CMT (${incomingPaymentStatus.toUpperCase()}) — DO NOT PREP!`;
+        } else if (isErrorPayment) {
+          nextStatus = 'error';
+          badPaymentAlertMsg = `⚠️ PAYMENT ERROR IN CMT (${incomingPaymentStatus.toUpperCase()}) — HOLD PREP!`;
+        }
+
+        const newlyEnteredBadPayment = isBadPayment && existing.status !== nextStatus;
+        const shouldFlash = newlyEnteredBadPayment || (data.flash_kitchen === true && (itemsAdded.length > 0 || Boolean(data.custom_note)));
+        const alertMsg = badPaymentAlertMsg
+          ? badPaymentAlertMsg
+          : itemsAdded.length > 0
           ? `⚡ CFA SYNC: ${itemsAdded.join(', ')}${data.custom_note ? ` — "${data.custom_note}"` : ''}`
           : (data.custom_note ? `⚡ CFA NOTE: "${data.custom_note}"` : existing.alert_message);
 
         db.prepare(`
           UPDATE orders
           SET customer_name = ?, customer_phone = ?, organization = ?, pickup_time = ?,
-              order_type = ?, guest_count = ?, special_notes = ?,
+              order_type = ?, guest_count = ?, special_notes = ?, status = ?, payment_status = ?,
               has_unacknowledged_change = ?, alert_message = ?, updated_at = ?
           WHERE id = ?
         `).run(
           customerName, customerPhone, organization, pickupTime,
-          orderType, guestCount, specialNotes,
+          orderType, guestCount, specialNotes, nextStatus, nextPaymentStatus,
           shouldFlash ? 1 : existing.has_unacknowledged_change,
-          shouldFlash ? alertMsg : existing.alert_message,
+          (shouldFlash || badPaymentAlertMsg) ? alertMsg : existing.alert_message,
           now, existing.id
         );
 
@@ -659,19 +702,20 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, mode: 'updated', order: updatedOrder }));
       } else {
-        // Create new order from CFA Home sync
+        // Create new order from CFA Home sync (starts as is_new_unseen = 1 so it glows BRIGHT GREEN until touched!)
         const id = 'ord-' + crypto.randomUUID().slice(0, 8);
         const hasUrgentNote = Boolean(data.custom_note) || data.flash_kitchen === true;
         const alertMsg = data.custom_note ? `⚡ NOTE: "${data.custom_note}"` : '⚡ New Order Synced from CFA Home';
 
         db.prepare(`
-          INSERT INTO orders (id, order_number, customer_name, customer_phone, organization, pickup_time, order_type, guest_count, special_notes, status, has_unacknowledged_change, alert_message, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)
+          INSERT INTO orders (id, order_number, customer_name, customer_phone, organization, pickup_time, order_type, guest_count, special_notes, status, payment_status, is_new_unseen, has_unacknowledged_change, alert_message, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, 1, ?, ?, ?, ?)
         `).run(
           id, orderNumber, data.customer_name || 'CFA Catering Guest', data.customer_phone || '',
           data.organization || '', data.pickup_time || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
           data.order_type || 'Pickup', Number(data.guest_count) || 1,
           data.special_notes || data.custom_note || '',
+          incomingPaymentStatus || 'Payment Received',
           hasUrgentNote ? 1 : 0, hasUrgentNote ? alertMsg : null, now, now
         );
 
@@ -808,6 +852,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/orders/:id/touch (Clears the bright green 'is_new_unseen' highlight once a new order is touched)
+  const touchMatch = pathname.match(/^\/api\/orders\/([^\/]+)\/touch$/);
+  if (touchMatch && method === 'POST') {
+    try {
+      const orderId = touchMatch[1];
+      const now = new Date().toISOString();
+      db.prepare('UPDATE orders SET is_new_unseen = 0, updated_at = ? WHERE id = ?').run(now, orderId);
+      const updatedOrder = getFullOrder(orderId);
+      if (updatedOrder) {
+        broadcastEvent('status_changed', { orderId, newStatus: updatedOrder.status, updatedOrder });
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, order: updatedOrder }));
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
   // POST /api/orders/:id/acknowledge-alert (Kitchen taps touchscreen to silence/acknowledge the red flash)
   const ackMatch = pathname.match(/^\/api\/orders\/([^\/]+)\/acknowledge-alert$/);
   if (ackMatch && method === 'POST') {
@@ -817,10 +881,11 @@ const server = http.createServer(async (req, res) => {
       const now = new Date().toISOString();
       const chefName = data.chef_name || 'Kitchen Staff';
 
-      // Reset unacknowledged flag
+      // Reset unacknowledged flag and new unseen flag
       db.prepare(`
         UPDATE orders
         SET has_unacknowledged_change = 0,
+            is_new_unseen = 0,
             updated_at = ?
         WHERE id = ?
       `).run(now, orderId);
@@ -884,6 +949,9 @@ const server = http.createServer(async (req, res) => {
         WHERE id = ?
       `).run(newVerified, verifiedBy, verifiedAt, itemId);
 
+      // Touching an item also clears the bright green 'is_new_unseen' flag on the order
+      db.prepare('UPDATE orders SET is_new_unseen = 0, updated_at = ? WHERE id = ?').run(now, item.order_id);
+
       // Check if all items in order are verified, auto-suggest 'ready' status if not already
       const allItems = db.prepare('SELECT is_verified FROM order_items WHERE order_id = ?').all(item.order_id);
       const allChecked = allItems.every(i => i.is_verified === 1);
@@ -916,7 +984,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // PATCH /api/orders/:id/status (Change status: new, in_prep, ready, completed)
+  // PATCH /api/orders/:id/status (Change status: new, in_prep, ready, completed, error, cancelled)
   const statusMatch = pathname.match(/^\/api\/orders\/([^\/]+)\/status$/);
   if (statusMatch && method === 'PATCH') {
     try {
@@ -925,7 +993,24 @@ const server = http.createServer(async (req, res) => {
       const newStatus = data.status;
       const now = new Date().toISOString();
 
-      db.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, now, orderId);
+      if (newStatus === 'error' || newStatus === 'cancelled') {
+        const payStatus = newStatus === 'cancelled' ? 'Cancelled' : 'Error';
+        const alertMsg = newStatus === 'cancelled'
+          ? '🚫 ORDER CANCELLED — DO NOT PREP!'
+          : '⚠️ PAYMENT ERROR — HOLD PREP!';
+        db.prepare(`
+          UPDATE orders
+          SET status = ?, payment_status = ?, is_new_unseen = 0,
+              has_unacknowledged_change = 1, alert_message = ?, updated_at = ?
+          WHERE id = ?
+        `).run(newStatus, payStatus, alertMsg, now, orderId);
+      } else {
+        db.prepare(`
+          UPDATE orders
+          SET status = ?, payment_status = 'Payment Received', is_new_unseen = 0, updated_at = ?
+          WHERE id = ?
+        `).run(newStatus, now, orderId);
+      }
 
       db.prepare(`
         INSERT INTO order_activity_logs (id, order_id, action, description, performed_by, created_at)
@@ -937,7 +1022,20 @@ const server = http.createServer(async (req, res) => {
       );
 
       const updatedOrder = getFullOrder(orderId);
-      broadcastEvent('status_changed', { orderId, newStatus, updatedOrder });
+      if (newStatus === 'error' || newStatus === 'cancelled') {
+        broadcastEvent('kitchen_alert', {
+          orderId,
+          orderNumber: updatedOrder.order_number,
+          customerName: updatedOrder.customer_name,
+          alertMessage: updatedOrder.alert_message,
+          urgency: 'urgent',
+          itemsAdded: [],
+          updatedOrder,
+          timestamp: now
+        });
+      } else {
+        broadcastEvent('status_changed', { orderId, newStatus, updatedOrder });
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, order: updatedOrder }));

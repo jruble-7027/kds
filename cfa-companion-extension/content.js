@@ -137,11 +137,15 @@
     return `#CFA-${initials}`;
   }
 
+  function isBadPaymentStatus(statusStr) {
+    return /\b(error|cancell?ed|failed|declined|void)\b/i.test(statusStr || '');
+  }
+
   function cleanGuestName(raw) {
     if (!raw) return '';
     return raw
       .replace(
-        /\b(Guest\s*Name|Promised\s*Date|Method|Total|Payment\s*Status|Source|Upcoming|Past|Orders|Search\s*guest\s*name|Select\s*Date\s*Range|Payment|Received|Pending|Catering|Management|Tool|Mobile|App|Web|Pickup|Delivery|Curbside|Paid|Unpaid|Invoiced)\b/gi,
+        /\b(Guest\s*Name|Promised\s*Date|Method|Total|Payment\s*Status|Source|Upcoming|Past|Orders|Search\s*guest\s*name|Select\s*Date\s*Range|Payment|Received|Pending|Error|Failed|Declined|Cancell?ed|Voided|Catering|Management|Tool|Mobile|App|Web|Pickup|Delivery|Curbside|Paid|Unpaid|Invoiced)\b/gi,
         ''
       )
       .replace(/\$[\d,.]+/g, '')
@@ -182,12 +186,14 @@
 
     const methodMatch = afterDate.match(/\b(Pickup|Delivery|Curbside|Dine-In)\b/i);
     const totalMatch = afterDate.match(/\$\d[\d,]*\.\d{2}/);
-    const paymentMatch = afterDate.match(/\b(Payment\s+Received|Payment\s+Pending|Paid|Unpaid|Invoiced|House\s+Account)\b/i);
+    const paymentMatch = afterDate.match(
+      /\b(Payment\s+Received|Payment\s+Pending|Payment\s+Error|Payment\s+Failed|Order\s+Cancell?ed|Cancell?ed|Error|Failed|Declined|Paid|Unpaid|Invoiced|House\s+Account)\b/i
+    );
     const sourceMatch = afterDate.match(/\b(Catering\s+Management\s+Tool|Mobile\s+App|Web|One\s+App|Phone|POS)\b/i);
 
     const method = methodMatch ? (/delivery/i.test(methodMatch[1]) ? 'Delivery' : 'Pickup') : 'Pickup';
     const total = totalMatch ? totalMatch[0] : '';
-    const paymentStatus = paymentMatch ? paymentMatch[0].replace(/\s+/g, ' ') : 'Payment Received';
+    const paymentStatus = paymentMatch ? paymentMatch[0].replace(/\s+/g, ' ').trim() : 'Payment Received';
     const source = sourceMatch ? sourceMatch[0].replace(/\s+/g, ' ') : 'CFA Home';
 
     return {
@@ -265,14 +271,22 @@
       }
     }
 
-    // Fallback for Guest Name from modal title right above "Payment Received" (for POS / CMT orders without "Primary Contact" block)
+    // Fallback for Guest Name from modal title right above "Payment Received" / "Error" / "Cancelled" (for POS / CMT orders without "Primary Contact" block)
+    let modalPaymentStatus = '';
+    const modalPayMatch = headerSection.match(
+      /\b(Payment\s+Received|Payment\s+Pending|Payment\s+Error|Payment\s+Failed|Order\s+Cancell?ed|Cancell?ed|Error)\b/i
+    );
+    if (modalPayMatch) {
+      modalPaymentStatus = modalPayMatch[0].replace(/\s+/g, ' ').trim();
+    }
+
     if (!guestName) {
       const headerLines = headerSection
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean);
       for (let i = 0; i < headerLines.length; i++) {
-        if (/^(?:✓\s*)?Payment\s+(?:Received|Pending|Status)/i.test(headerLines[i]) && i > 0) {
+        if (/^(?:✓\s*|×\s*|✕\s*|⚠️\s*)?(?:Payment\s+(?:Received|Pending|Status|Error|Failed)|Order\s+Cancell?ed|Cancell?ed|Error)$/i.test(headerLines[i]) && i > 0) {
           const candidate = headerLines[i - 1].replace(/^[✓×✕\s]+/, '').trim();
           if (candidate.length >= 2 && candidate.length <= 45 && !/Source|Total|Method|Event\s+Summary/i.test(candidate)) {
             guestName = candidate;
@@ -375,6 +389,7 @@
       pickupTimeStr,
       orderType,
       deliveryAddress,
+      paymentStatus: modalPaymentStatus,
       specialNotes: combinedSpecialNotes,
       items
     };
@@ -764,6 +779,7 @@
     const matchedKds = kdsOrders.find(
       (o) => activeGuest && o.customer_name.toLowerCase() === activeGuest.toLowerCase()
     );
+    const finalPaymentStatus = summaryData.paymentStatus || (matchedRow ? matchedRow.paymentStatus : 'Payment Received');
 
     // Never fall back to promisedInput.value if it belongs to a different guest!
     const finalTimeStr = summaryData.pickupTimeStr || (matchedRow ? matchedRow.promisedDate : '');
@@ -795,7 +811,12 @@
     }
     typeSelect.value = finalType;
 
-    const sig = `${activeGuest}|${finalOrderNum}|${summaryData.items.map((i) => `${i.quantity}:${i.name}`).join(',')}`;
+    // If this order is in Error or Cancelled status and NOT already on the KDS, do not auto-sync it!
+    if (isBadPaymentStatus(finalPaymentStatus) && !matchedKds) {
+      return summaryData;
+    }
+
+    const sig = `${activeGuest}|${finalOrderNum}|${finalPaymentStatus}|${summaryData.items.map((i) => `${i.quantity}:${i.name}`).join(',')}`;
     if (!isBulkCrawling && activeGuest && sig !== lastAutoSyncedSignature) {
       lastAutoSyncedSignature = sig;
 
@@ -808,6 +829,7 @@
           organization: summaryData.deliveryAddress || '',
           pickup_time: finalPickupIso,
           order_type: finalType,
+          payment_status: finalPaymentStatus,
           special_notes: summaryData.specialNotes || '',
           items: summaryData.items,
           flash_kitchen: false,
@@ -817,10 +839,17 @@
       });
 
       if (res && res.ok) {
-        showToast(
-          `✓ Synced ${activeGuest} (${summaryData.items.length} food items) to Kitchen KDS!`,
-          'success'
-        );
+        if (isBadPaymentStatus(finalPaymentStatus)) {
+          showToast(
+            `⚠️ Flagged ${activeGuest} as ${finalPaymentStatus.toUpperCase()} on Kitchen KDS!`,
+            'error'
+          );
+        } else {
+          showToast(
+            `✓ Synced ${activeGuest} (${summaryData.items.length} food items) to Kitchen KDS!`,
+            'success'
+          );
+        }
         await refreshKdsOrders();
       }
     }
@@ -845,7 +874,8 @@
       dashboardRowsData.forEach((r, idx) => {
         const opt = document.createElement('option');
         opt.value = `dash_${idx}`;
-        opt.textContent = `${r.guestName} — ${r.promisedDate} (${r.method})`;
+        const payTag = isBadPaymentStatus(r.paymentStatus) ? ` [⚠️ ${r.paymentStatus.toUpperCase()}]` : '';
+        opt.textContent = `${r.guestName}${payTag} — ${r.promisedDate} (${r.method})`;
         dashGroup.appendChild(opt);
       });
       existingSelect.appendChild(dashGroup);
@@ -949,10 +979,44 @@
     syncAllBtn.disabled = true;
 
     let syncedCount = 0;
+    let skippedBadCount = 0;
+    let flaggedBadCount = 0;
     let itemsCapturedCount = 0;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
+      const alreadyOnKds = kdsOrders.find(
+        (o) =>
+          o.order_number.toLowerCase() === (row.orderNumber || '').toLowerCase() ||
+          o.customer_name.toLowerCase() === (row.guestName || '').toLowerCase()
+      );
+
+      // If row's Payment Status is Error or Cancelled:
+      // - Skip it completely if it is NOT already on the KDS
+      // - Flag it on the KDS if it WAS already synced earlier!
+      if (isBadPaymentStatus(row.paymentStatus)) {
+        if (!alreadyOnKds) {
+          skippedBadCount++;
+          continue;
+        }
+        syncAllBtn.textContent = `⚠️ Flagging ${row.paymentStatus}: ${row.guestName}...`;
+        const flagRes = await callKdsApi({
+          type: 'KDS_SYNC_ORDER',
+          payload: {
+            order_number: alreadyOnKds.order_number || row.orderNumber,
+            customer_name: row.guestName,
+            pickup_time: parsePromisedDateToIso(row.promisedDate) || alreadyOnKds.pickup_time,
+            order_type: row.method || alreadyOnKds.order_type,
+            payment_status: row.paymentStatus,
+            flash_kitchen: true,
+            sync_mode: 'sync',
+            submitted_by: isAuto ? 'CFA Home Game-Day Auto-Sync' : 'CFA Home Dashboard Deep-Sync'
+          }
+        });
+        if (flagRes && flagRes.ok) flaggedBadCount++;
+        continue;
+      }
+
       syncAllBtn.textContent = `⏳ Reading Food (${i + 1}/${rows.length}): ${row.guestName}...`;
 
       const clickTarget = findClickableElementForGuest(row.guestName) || row.domElement;
@@ -963,6 +1027,14 @@
       }
 
       const summary = await waitForGuestSummary(row.guestName, 1200);
+      const effectivePayStatus = (summary && summary.paymentStatus) || row.paymentStatus || 'Payment Received';
+
+      // Double-check if modal revealed Error or Cancelled status
+      if (isBadPaymentStatus(effectivePayStatus) && !alreadyOnKds) {
+        skippedBadCount++;
+        continue;
+      }
+
       const orderItems = summary && summary.items ? summary.items : [];
       if (orderItems.length > 0) itemsCapturedCount += orderItems.length;
 
@@ -978,6 +1050,7 @@
           organization: (summary && summary.deliveryAddress) || '',
           pickup_time: parsePromisedDateToIso(finalTimeStr),
           order_type: finalType,
+          payment_status: effectivePayStatus,
           special_notes: (summary && summary.specialNotes) || '',
           items: orderItems,
           flash_kitchen: false,
@@ -986,7 +1059,13 @@
         }
       });
 
-      if (res && res.ok) syncedCount++;
+      if (res && res.ok) {
+        if (isBadPaymentStatus(effectivePayStatus)) {
+          flaggedBadCount++;
+        } else {
+          syncedCount++;
+        }
+      }
     }
 
     isBulkCrawling = false;
@@ -996,8 +1075,13 @@
     const timeStamp = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     localStorage.setItem('cfa_kds_last_autosync_time', timeStamp);
 
+    const extraNotes = [];
+    if (skippedBadCount > 0) extraNotes.push(`Skipped ${skippedBadCount} Error/Cancelled`);
+    if (flaggedBadCount > 0) extraNotes.push(`Alerted Kitchen on ${flaggedBadCount} Error/Cancelled`);
+    const suffix = extraNotes.length > 0 ? ` (${extraNotes.join(' • ')})` : '';
+
     showToast(
-      `✓ ${isAuto ? 'Auto-Synced' : 'Synced'} ${syncedCount} orders (${itemsCapturedCount} food items) at ${timeStamp}!`,
+      `✓ ${isAuto ? 'Auto-Synced' : 'Synced'} ${syncedCount} orders (${itemsCapturedCount} food items)${suffix} at ${timeStamp}!`,
       'success'
     );
     await refreshKdsOrders();

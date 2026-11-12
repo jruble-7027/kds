@@ -122,6 +122,14 @@
             <select id="quick-mod-order-select" class="form-select" required>
               <!-- Filled dynamically with active orders -->
             </select>
+            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn-card-action" style="flex: 1; background: #FEF3C7; color: #B45309; border-color: #F59E0B; font-weight: 800;" onclick="window.CFA_APP.flagSelectedOrderStatus('error')">
+                ⚠️ Flag Payment Error (Hold Prep)
+              </button>
+              <button type="button" class="btn-card-action" style="flex: 1; background: #FFE4E6; color: #BE123C; border-color: #F43F5E; font-weight: 800;" onclick="window.CFA_APP.flagSelectedOrderStatus('cancelled')">
+                🚫 Flag Order Cancelled (Do Not Make)
+              </button>
+            </div>
           </div>
 
           <div class="form-group">

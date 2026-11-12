@@ -1492,6 +1492,182 @@ body:has(.modal-overlay.open) {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* =========================================================================
+   HIGH-CONTRAST COLOR STATES:
+   1. BRIGHT NEON GREEN FOR NEWLY ARRIVED ORDERS (.is-new-unseen)
+   2. ELECTRIC AMBER/ORANGE FOR PAYMENT ERROR (.is-error-order)
+   3. HOT CRIMSON/MAGENTA FOR CANCELLED ORDERS (.is-cancelled-order)
+   ========================================================================= */
+
+/* 1. Bright Neon Green New Order State (until touched) */
+.order-card.is-new-unseen {
+  border: 3px solid #22C55E !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35), 0 10px 28px rgba(16, 185, 129, 0.45) !important;
+  animation: new-green-pulse 2s infinite ease-in-out;
+}
+
+@keyframes new-green-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.4), 0 8px 24px rgba(16, 185, 129, 0.35);
+    border-color: #22C55E;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.2), 0 10px 32px rgba(34, 197, 94, 0.65);
+    border-color: #4ADE80;
+  }
+}
+
+.order-card.is-new-unseen .card-header {
+  background: #DCFCE7;
+  border-bottom-color: #86EFAC;
+}
+
+body.kitchen-mode .order-card.is-new-unseen {
+  background: #064E3B !important;
+  border-color: #4ADE80 !important;
+}
+
+body.kitchen-mode .order-card.is-new-unseen .card-header {
+  background: linear-gradient(135deg, #065F46 0%, #047857 100%) !important;
+  border-bottom-color: #34D399 !important;
+}
+
+.new-order-green-banner {
+  background: linear-gradient(90deg, #16A34A, #10B981);
+  color: #FFFFFF;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.btn-acknowledge-green {
+  background: #FFFFFF;
+  color: #047857;
+  border: none;
+  font-weight: 900;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* 2. High-Contrast Electric Amber/Orange for PAYMENT ERROR (.is-error-order) */
+.order-card.is-error-order {
+  border: 3.5px solid #F59E0B !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4), 0 10px 30px rgba(245, 158, 11, 0.5) !important;
+  animation: error-amber-pulse 1.4s infinite ease-in-out;
+}
+
+@keyframes error-amber-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.5), 0 8px 24px rgba(245, 158, 11, 0.4);
+    border-color: #F59E0B;
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(251, 191, 36, 0.25), 0 10px 34px rgba(251, 191, 36, 0.75);
+    border-color: #FBBF24;
+  }
+}
+
+.order-card.is-error-order .card-header {
+  background: #FEF3C7;
+  border-bottom-color: #F59E0B;
+}
+
+body.kitchen-mode .order-card.is-error-order {
+  background: #451A03 !important;
+  border-color: #FBBF24 !important;
+}
+
+body.kitchen-mode .order-card.is-error-order .card-header {
+  background: linear-gradient(135deg, #78350F 0%, #92400E 100%) !important;
+  border-bottom-color: #FBBF24 !important;
+}
+
+.alert-banner.error-banner {
+  background: repeating-linear-gradient(
+    -45deg,
+    #D97706,
+    #D97706 14px,
+    #B45309 14px,
+    #B45309 28px
+  );
+  color: #FFFFFF;
+  animation: none;
+  border-bottom: 2px solid #FDE68A;
+}
+
+.status-pill.status-error {
+  background: #F59E0B;
+  color: #0F172A;
+  border: 1.5px solid #FDE68A;
+  font-weight: 900;
+}
+
+/* 3. High-Contrast Neon Rose / Crimson for CANCELLED ORDERS (.is-cancelled-order) */
+.order-card.is-cancelled-order {
+  border: 3.5px solid #F43F5E !important;
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.45), 0 10px 32px rgba(244, 63, 94, 0.6) !important;
+  animation: cancelled-crimson-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes cancelled-crimson-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.55), 0 8px 24px rgba(244, 63, 94, 0.45);
+    border-color: #F43F5E;
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(251, 113, 133, 0.25), 0 10px 36px rgba(244, 63, 94, 0.8);
+    border-color: #FB7185;
+  }
+}
+
+.order-card.is-cancelled-order .card-header {
+  background: #FFE4E6;
+  border-bottom-color: #F43F5E;
+}
+
+body.kitchen-mode .order-card.is-cancelled-order {
+  background: #4C0519 !important;
+  border-color: #FB7185 !important;
+}
+
+body.kitchen-mode .order-card.is-cancelled-order .card-header {
+  background: linear-gradient(135deg, #881337 0%, #9F1239 100%) !important;
+  border-bottom-color: #FB7185 !important;
+}
+
+.alert-banner.cancelled-banner {
+  background: repeating-linear-gradient(
+    -45deg,
+    #E11D48,
+    #E11D48 14px,
+    #9F1239 14px,
+    #9F1239 28px
+  );
+  color: #FFFFFF;
+  animation: none;
+  border-bottom: 2px solid #FECDD3;
+}
+
+.status-pill.status-cancelled {
+  background: #F43F5E;
+  color: #FFFFFF;
+  border: 1.5px solid #FECDD3;
+  font-weight: 900;
+}
+
+.customer-name.cancelled-text {
+  text-decoration: line-through;
+  opacity: 0.9;
+}
+
 /* Responsive tweaks */
 @media (max-width: 768px) {
   .header-top {
