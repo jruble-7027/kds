@@ -877,6 +877,13 @@
   }
 
   // --- VIEW SWITCHING ---
+  function setActiveFilterTab(filterName) {
+    currentFilter = filterName;
+    document.querySelectorAll('.filter-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.filter === filterName);
+    });
+  }
+
   function switchView(view) {
     currentView = view;
     if (view === 'kitchen') {
@@ -884,11 +891,13 @@
       deskViewBtn.classList.remove('active');
       kitchenViewBtn.classList.add('active', 'kitchen-active');
       document.title = '🐔 CFA Kitchen Touch Display (KDS)';
+      setActiveFilterTab('today');
     } else {
       document.body.classList.remove('kitchen-mode');
       kitchenViewBtn.classList.remove('active', 'kitchen-active');
       deskViewBtn.classList.add('active');
       document.title = '🐔 CFA Catering Portal & Order Desk';
+      setActiveFilterTab('all');
     }
     renderOrders();
   }
