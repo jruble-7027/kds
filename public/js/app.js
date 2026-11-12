@@ -6,6 +6,7 @@
   let currentView = 'desk'; // 'desk' or 'kitchen'
   let currentFilter = 'all'; // 'all', 'today', 'due_soon', 'prep', 'ready', 'completed'
   let searchQuery = '';
+  let focusedOrderId = null;
   let orders = [];
   let sseSource = null;
   let audioEnabled = true;
@@ -25,6 +26,7 @@
   const toastContainer = document.getElementById('toast-container');
   const localIpBanner = document.getElementById('local-ip-banner');
   const orderSearchInput = document.getElementById('order-search-input');
+  const focusBackdrop = document.getElementById('focus-backdrop');
 
   // --- AUDIO SYNTHESIZER (Web Audio API) ---
   // Generates a crisp, warm Chick-fil-A kitchen notification bell/chime
@@ -311,6 +313,7 @@
         });
       });
     }
+    syncFocusBackdrop();
   }
 
   function getStatusMeta(status) {
@@ -320,11 +323,32 @@
     return { label: '🆕 NEW', cls: 'status-new' };
   }
 
+  function syncFocusBackdrop() {
+    if (!focusBackdrop) return;
+    const hasFocusedInDom = Boolean(focusedOrderId && document.querySelector(`.order-card[data-order-id="${focusedOrderId}"]`));
+    if (!hasFocusedInDom) {
+      focusedOrderId = null;
+    }
+    focusBackdrop.classList.toggle('open', Boolean(focusedOrderId));
+    document.body.classList.toggle('has-focused-order', Boolean(focusedOrderId));
+  }
+
+  function toggleFocusOrder(orderId, event) {
+    if (event) event.stopPropagation();
+    if (!orderId || focusedOrderId === orderId) {
+      focusedOrderId = null;
+    } else {
+      focusedOrderId = orderId;
+    }
+    renderOrders();
+  }
+
   // Create Order Card Component
   function createOrderCardElement(order) {
     const card = document.createElement('div');
     const hasAlert = order.has_unacknowledged_change === 1;
-    card.className = `order-card status-card-${order.status || 'new'} ${hasAlert ? 'has-alert' : ''}`;
+    const isFocused = focusedOrderId === order.id;
+    card.className = `order-card status-card-${order.status || 'new'} ${hasAlert ? 'has-alert' : ''} ${isFocused ? 'focused-card' : ''}`;
     card.setAttribute('data-order-id', order.id);
 
     const timing = getCountdownStatus(order.pickup_time);
@@ -383,12 +407,13 @@
         </div>
       ` : ''}
 
-      <div class="card-header">
+      <div class="card-header" onclick="window.CFA_APP.toggleFocusOrder('${order.id}', event)" title="Tap header to toggle Full-Screen Focus View">
         <div>
           <div class="order-ref">
             <span class="order-num">${escapeHtml(order.order_number)}</span>
             <span class="order-type-badge ${order.order_type.toLowerCase()}">${escapeHtml(order.order_type)}</span>
             <span class="status-pill ${statusMeta.cls}">${statusMeta.label}</span>
+            <span class="focus-toggle-pill ${isFocused ? 'active' : ''}">${isFocused ? '✕ Close Full View' : '🔍 Full View'}</span>
           </div>
           <div class="customer-name">${escapeHtml(order.customer_name)}</div>
           ${order.customer_phone ? `<div class="customer-org" style="font-weight:700; color:#0F172A; margin-top:2px;">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
@@ -993,6 +1018,7 @@
     acknowledgeAlert,
     setOrderStatus,
     deleteOrder,
+    toggleFocusOrder,
     openQuickModModal,
     openNewOrderModal,
     viewOrderHistory,
