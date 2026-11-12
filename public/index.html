@@ -243,16 +243,22 @@
 
           <!-- Menu Item Selector -->
           <div class="form-group">
-            <label class="form-label">Select Catering Items (Click to Add)</label>
-            <div id="new-order-menu-container" style="max-height: 220px; overflow-y: auto; border: 1px solid #CBD5E1; padding: 12px; border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <label class="form-label" style="margin: 0;">Select Menu Items (Click an item, then enter Quantity below)</label>
+              <input type="search" id="new-order-menu-search" class="form-input" placeholder="🔍 Search menu (e.g. Biscuit, Tray, Sauce)..." style="max-width: 280px; padding: 6px 10px; font-size: 0.82rem;">
+            </div>
+            <div id="new-order-cat-tabs" class="menu-cat-tabs">
+              <!-- Category filter pills loaded from CFA_MENU -->
+            </div>
+            <div id="new-order-menu-container" class="quick-sauce-grid">
               <!-- Loaded from cfa-menu.js -->
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Selected Items in this Order</label>
-            <div id="new-order-selected-items" style="border: 1px dashed #CBD5E1; border-radius: 8px; padding: 10px; min-height: 60px;">
-              <!-- Selected items list -->
+            <label class="form-label">Selected Items & Quantities in this Order</label>
+            <div id="new-order-selected-items" style="border: 1.5px solid #CBD5E1; border-radius: 8px; padding: 10px; min-height: 64px; background: #F8FAFC;">
+              <!-- Selected items list with editable quantity inputs -->
             </div>
           </div>
         </div>

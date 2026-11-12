@@ -760,6 +760,10 @@
   }
 
   // --- NEW CATERING ORDER MODAL ---
+  let newOrderSelectedItems = [];
+  let newOrderActiveCategory = 'All';
+  let newOrderSearchTerm = '';
+
   function openNewOrderModal() {
     initAudio();
     // Default pickup time 1 hour from now
@@ -768,70 +772,134 @@
     const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     document.getElementById('new-order-time').value = localIso;
 
-    // Build Menu category tabs
+    newOrderActiveCategory = 'All';
+    newOrderSearchTerm = '';
+    const searchEl = document.getElementById('new-order-menu-search');
+    if (searchEl) searchEl.value = '';
+
+    renderNewOrderCategoryTabs();
     renderNewOrderMenuPicker();
+    renderNewOrderItemsList();
     newOrderModal.classList.add('open');
   }
 
-  let newOrderSelectedItems = [];
+  function renderNewOrderCategoryTabs() {
+    const tabsEl = document.getElementById('new-order-cat-tabs');
+    if (!tabsEl || !window.CFA_MENU) return;
+
+    const allTab = `<button type="button" class="menu-cat-pill ${newOrderActiveCategory === 'All' ? 'active' : ''}" onclick="window.CFA_APP.selectNewOrderCategory('All')">All Menu</button>`;
+    const catTabs = window.CFA_MENU.map((cat, idx) => `
+      <button type="button" class="menu-cat-pill ${newOrderActiveCategory === cat.category ? 'active' : ''}"
+              onclick="window.CFA_APP.selectNewOrderCategoryIndex(${idx})">
+        ${cat.icon} ${escapeHtml(cat.category)}
+      </button>
+    `).join('');
+
+    tabsEl.innerHTML = allTab + catTabs;
+  }
+
+  function selectNewOrderCategory(catName) {
+    newOrderActiveCategory = catName;
+    renderNewOrderCategoryTabs();
+    renderNewOrderMenuPicker();
+  }
+
+  function selectNewOrderCategoryIndex(catIdx) {
+    const cat = window.CFA_MENU && window.CFA_MENU[catIdx];
+    if (!cat) return;
+    newOrderActiveCategory = cat.category;
+    renderNewOrderCategoryTabs();
+    renderNewOrderMenuPicker();
+  }
 
   function renderNewOrderMenuPicker() {
     const container = document.getElementById('new-order-menu-container');
-    if (!window.CFA_MENU) return;
+    if (!container || !window.CFA_MENU) return;
 
-    container.innerHTML = window.CFA_MENU.map((cat, catIdx) => `
-      <div style="margin-bottom: 14px;">
-        <div style="font-weight: 800; font-size: 0.95rem; margin-bottom: 6px; color: #1E293B;">
-          ${cat.icon} ${escapeHtml(cat.category)}
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
-          ${cat.items.map((item, itemIdx) => `
-            <button type="button" class="btn-card-action" style="justify-content: space-between; text-align: left;"
-                    onclick="window.CFA_APP.addMenuItemByIndex(${catIdx}, ${itemIdx})">
-              <span>${escapeHtml(item.name)}</span>
-              <span style="color: var(--cfa-red); font-weight: 800;">+${item.defaultQty || 1}</span>
-            </button>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
+    const q = newOrderSearchTerm.trim().toLowerCase();
+    const buttonsHtml = [];
 
-    renderNewOrderItemsList();
+    window.CFA_MENU.forEach((cat, catIdx) => {
+      if (newOrderActiveCategory !== 'All' && cat.category !== newOrderActiveCategory) return;
+
+      cat.items.forEach((item, itemIdx) => {
+        if (q && !item.name.toLowerCase().includes(q) && !(item.subCategory || '').toLowerCase().includes(q) && !cat.category.toLowerCase().includes(q)) {
+          return;
+        }
+        const alreadyAdded = newOrderSelectedItems.find(i => i.name === item.name);
+        buttonsHtml.push(`
+          <button type="button" class="btn-sauce-preset ${alreadyAdded ? 'selected' : ''}"
+                  onclick="window.CFA_APP.addMenuItemByIndex(${catIdx}, ${itemIdx})">
+            <span class="preset-item-name">${escapeHtml(item.name)}</span>
+            <span class="preset-item-cat">${alreadyAdded ? `✓ Added (Qty: ${alreadyAdded.quantity})` : escapeHtml(item.subCategory || cat.category)}</span>
+          </button>
+        `);
+      });
+    });
+
+    container.innerHTML = buttonsHtml.length > 0
+      ? buttonsHtml.join('')
+      : '<div style="grid-column: 1 / -1; padding: 12px; color: #64748B; text-align: center; font-size: 0.85rem;">No matching menu items found.</div>';
   }
 
   function addMenuItemByIndex(catIdx, itemIdx) {
     const cat = window.CFA_MENU && window.CFA_MENU[catIdx];
     const item = cat && cat.items && cat.items[itemIdx];
     if (!item) return;
-    addItemToNewOrder(item.name, item.defaultQty || 1, item.unit || 'count', item.subCategory || cat.category);
+    addItemToNewOrder(item.name, 1, item.unit || 'count', item.subCategory || cat.category);
   }
 
   function addItemToNewOrder(name, quantity, unit, category) {
-    const existing = newOrderSelectedItems.find(i => i.name === name);
-    if (existing) {
-      existing.quantity += quantity;
-    } else {
-      newOrderSelectedItems.push({ name, quantity, unit, category });
+    let targetIdx = newOrderSelectedItems.findIndex(i => i.name === name);
+    if (targetIdx === -1) {
+      newOrderSelectedItems.push({ name, quantity: Number(quantity) || 1, unit: unit || 'count', category: category || 'Food & Menu' });
+      targetIdx = newOrderSelectedItems.length - 1;
     }
-    renderNewOrderItemsList();
+    renderNewOrderMenuPicker();
+    renderNewOrderItemsList(targetIdx);
   }
 
-  function renderNewOrderItemsList() {
+  function updateNewOrderItemQty(idx, val) {
+    if (!newOrderSelectedItems[idx]) return;
+    const parsed = parseInt(val, 10);
+    newOrderSelectedItems[idx].quantity = isNaN(parsed) || parsed < 1 ? 1 : parsed;
+    renderNewOrderMenuPicker();
+  }
+
+  function renderNewOrderItemsList(focusIdx = null) {
     const listEl = document.getElementById('new-order-selected-items');
     if (newOrderSelectedItems.length === 0) {
-      listEl.innerHTML = '<div style="color: #94A3B8; font-size: 0.85rem; padding: 8px;">No items added yet. Click items above to include them.</div>';
+      listEl.innerHTML = '<div style="color: #94A3B8; font-size: 0.85rem; padding: 8px; text-align: center;">No items selected yet. Click any menu item above to add it and enter its quantity.</div>';
       return;
     }
     listEl.innerHTML = newOrderSelectedItems.map((item, idx) => `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #F8FAFC; border-radius: 6px; margin-bottom: 4px;">
-        <span style="font-weight: 600; font-size: 0.9rem;">${item.quantity}x ${escapeHtml(item.name)} (${escapeHtml(item.unit)})</span>
-        <button type="button" style="border:none; background:transparent; color:#EF4444; font-weight:800; cursor:pointer;" onclick="window.CFA_APP.removeItemFromNewOrder(${idx})">✕</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 10px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 6px;">
+        <div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+          <span style="font-weight: 700; font-size: 0.9rem; color: #0F172A;">${escapeHtml(item.name)}</span>
+          <span style="font-size: 0.72rem; color: #64748B;">${escapeHtml(item.category || 'Food & Menu')}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569;">Qty:</label>
+          <input type="number" id="new-order-item-qty-${idx}" min="1" value="${item.quantity}"
+                 style="width: 76px; padding: 5px 8px; border: 1.5px solid #CBD5E1; border-radius: 6px; font-weight: 800; font-size: 0.95rem; text-align: center;"
+                 oninput="window.CFA_APP.updateNewOrderItemQty(${idx}, this.value)" />
+          <button type="button" title="Remove item" style="border:none; background:#FEF2F2; color:#DC2626; width:28px; height:28px; border-radius:6px; font-weight:800; cursor:pointer;" onclick="window.CFA_APP.removeItemFromNewOrder(${idx})">✕</button>
+        </div>
       </div>
     `).join('');
+
+    if (focusIdx !== null) {
+      const qtyEl = document.getElementById(`new-order-item-qty-${focusIdx}`);
+      if (qtyEl) {
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    }
   }
 
   function removeItemFromNewOrder(idx) {
     newOrderSelectedItems.splice(idx, 1);
+    renderNewOrderMenuPicker();
     renderNewOrderItemsList();
   }
 
@@ -1080,6 +1148,15 @@
       });
     }
 
+    // Menu search inside New Catering Order modal
+    const newOrderMenuSearch = document.getElementById('new-order-menu-search');
+    if (newOrderMenuSearch) {
+      newOrderMenuSearch.addEventListener('input', () => {
+        newOrderSearchTerm = newOrderMenuSearch.value || '';
+        renderNewOrderMenuPicker();
+      });
+    }
+
     // Modal Close buttons
     document.querySelectorAll('.modal-overlay').forEach(modal => {
       modal.addEventListener('click', e => {
@@ -1119,8 +1196,11 @@
     selectMenuCategoryIndex,
     selectMenuItem,
     setQuickModQty,
+    selectNewOrderCategory,
+    selectNewOrderCategoryIndex,
     addMenuItemByIndex,
     addItemToNewOrder,
+    updateNewOrderItemQty,
     removeItemFromNewOrder
   };
 
