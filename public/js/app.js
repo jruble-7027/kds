@@ -6,6 +6,8 @@
   let currentView = 'desk'; // 'desk' or 'kitchen'
   let currentFilter = 'all'; // 'all', 'today', 'due_soon', 'prep', 'ready', 'completed'
   let searchQuery = '';
+  let archiveMonthFilter = 'all';
+  let archiveTypeFilter = 'all';
   let focusedOrderId = null;
   let orders = [];
   let sseSource = null;
@@ -27,6 +29,9 @@
   const localIpBanner = document.getElementById('local-ip-banner');
   const orderSearchInput = document.getElementById('order-search-input');
   const focusBackdrop = document.getElementById('focus-backdrop');
+  const archiveOutreachBar = document.getElementById('archive-outreach-bar');
+  const archiveMonthSelect = document.getElementById('archive-month-filter');
+  const archiveTypeSelect = document.getElementById('archive-type-filter');
 
   // --- AUDIO SYNTHESIZER (Web Audio API) ---
   // Generates a crisp, warm Chick-fil-A kitchen notification bell/chime
@@ -250,22 +255,43 @@
     setEl('count-completed', completedOrders.length);
   }
 
-  function renderOrders() {
-    ordersGrid.innerHTML = '';
-    updateFilterTabCounts();
+  function populateArchiveMonthFilter() {
+    if (!archiveMonthSelect) return;
+    const completedOrders = orders.filter(o => o.status === 'completed');
+    const monthCounts = new Map();
+    completedOrders.forEach(o => {
+      const d = new Date(o.pickup_time);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString([], { month: 'long', year: 'numeric' });
+      const prev = monthCounts.get(key) || { label, count: 0 };
+      prev.count++;
+      monthCounts.set(key, prev);
+    });
 
+    const currentVal = archiveMonthFilter;
+    let html = `<option value="all">All Event Months (${completedOrders.length})</option>`;
+    Array.from(monthCounts.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .forEach(([key, info]) => {
+        html += `<option value="${key}" ${key === currentVal ? 'selected' : ''}>${escapeHtml(info.label)} (${info.count})</option>`;
+      });
+    archiveMonthSelect.innerHTML = html;
+  }
+
+  function getFilteredOrders() {
     const now = new Date();
     const q = searchQuery.trim().toLowerCase();
 
-    // Apply Filter + Search
-    const filtered = orders.filter(order => {
+    return orders.filter(order => {
       if (q) {
         const matchGuest = (order.customer_name || '').toLowerCase().includes(q);
         const matchNum = (order.order_number || '').toLowerCase().includes(q);
         const matchOrg = (order.organization || '').toLowerCase().includes(q);
         const matchPhone = (order.customer_phone || '').toLowerCase().includes(q);
+        const matchNotes = (order.special_notes || '').toLowerCase().includes(q);
         const matchItem = Array.isArray(order.items) && order.items.some(i => (i.name || '').toLowerCase().includes(q));
-        if (!matchGuest && !matchNum && !matchOrg && !matchPhone && !matchItem) {
+        if (!matchGuest && !matchNum && !matchOrg && !matchPhone && !matchNotes && !matchItem) {
           return false;
         }
       }
@@ -280,9 +306,34 @@
       }
       if (currentFilter === 'prep') return order.status === 'new' || order.status === 'in_prep';
       if (currentFilter === 'ready') return order.status === 'ready';
-      if (currentFilter === 'completed') return order.status === 'completed';
+      if (currentFilter === 'completed') {
+        if (order.status !== 'completed') return false;
+        if (archiveMonthFilter !== 'all') {
+          const d = new Date(order.pickup_time);
+          const mKey = !isNaN(d.getTime())
+            ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+            : '';
+          if (mKey !== archiveMonthFilter) return false;
+        }
+        if (archiveTypeFilter !== 'all' && (order.order_type || '').toLowerCase() !== archiveTypeFilter.toLowerCase()) {
+          return false;
+        }
+        return true;
+      }
       return true;
     });
+  }
+
+  function renderOrders() {
+    ordersGrid.innerHTML = '';
+    updateFilterTabCounts();
+    populateArchiveMonthFilter();
+
+    if (archiveOutreachBar) {
+      archiveOutreachBar.style.display = currentFilter === 'completed' ? 'flex' : 'none';
+    }
+
+    const filtered = getFilteredOrders();
 
     if (filtered.length === 0) {
       emptyState.style.display = 'block';
@@ -503,40 +554,39 @@
       </div>
 
       <div class="card-footer">
-        <button class="btn-quick-mod" title="Add items (e.g. 50 BBQ sauces) or alert kitchen" onclick="window.CFA_APP.openQuickModModal('${order.id}')">
-          ⚡ Quick Add
-        </button>
-        <button class="btn-card-action" onclick="window.CFA_APP.viewOrderHistory('${order.id}')" title="View Audit Trail">
-          📜 History
-        </button>
-        <button class="btn-card-action btn-delete-action" onclick="window.CFA_APP.deleteOrder('${order.id}', event)" title="Cancel & Delete Order">
-          🗑️ Delete
-        </button>
-        ${(order.status === 'new' || !order.status) ? `
-          <button class="btn-card-action primary" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'in_prep')">
-            Start Prep
-          </button>
-        ` : ''}
-        ${(order.status === 'error' || order.status === 'cancelled') ? `
-          <button class="btn-card-action" style="background: #F59E0B; color: #0F172A; border-color: #F59E0B; font-weight: 800;" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'new')">
-            ↺ Restore
-          </button>
-        ` : ''}
-        ${order.status === 'in_prep' ? `
-          <button class="btn-card-action primary" style="background: #10B981; border-color: #10B981;" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'ready')">
-            ✓ Ready
-          </button>
-        ` : ''}
-        ${order.status === 'ready' ? `
-          <button class="btn-card-action" style="background: #004F71; color: #FFF; border-color: #004F71;" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'completed')">
-            ✓ Complete
-          </button>
-        ` : ''}
         ${order.status === 'completed' ? `
-          <span class="btn-card-action" style="color: #10B981; background: #ECFDF5; border-color: #A7F3D0; cursor: default;">
-            ✓ Fulfilled
-          </span>
-        ` : ''}
+          <button class="btn-quick-mod" style="background: #EFF6FF; color: #1D4ED8; border-color: #93C5FD;" title="Re-book this customer's exact order for a future date" onclick="window.CFA_APP.rebookOrder('${order.id}')">
+            🔄 Re-Book
+          </button>
+          <button class="btn-card-action" onclick="window.CFA_APP.viewOrderHistory('${order.id}')" title="View Audit Trail">
+            📜 History
+          </button>
+          <button class="btn-card-action btn-delete-action" onclick="window.CFA_APP.deleteOrder('${order.id}', event)" title="Permanently Delete Order">
+            🗑️ Delete
+          </button>
+          <button class="btn-card-action" style="color: #047857; background: #ECFDF5; border-color: #6EE7B7;" title="Move back to All Active" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'new')">
+            ↺ Active
+          </button>
+        ` : `
+          <button class="btn-quick-mod" title="Add items (e.g. 50 BBQ sauces) or alert kitchen" onclick="window.CFA_APP.openQuickModModal('${order.id}')">
+            ⚡ Quick Add
+          </button>
+          <button class="btn-card-action" onclick="window.CFA_APP.viewOrderHistory('${order.id}')" title="View Audit Trail">
+            📜 History
+          </button>
+          <button class="btn-card-action btn-delete-action" onclick="window.CFA_APP.deleteOrder('${order.id}', event)" title="Cancel & Delete Order">
+            🗑️ Delete
+          </button>
+          ${(order.status === 'error' || order.status === 'cancelled') ? `
+            <button class="btn-card-action" style="background: #F59E0B; color: #0F172A; border-color: #F59E0B; font-weight: 800;" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'new')">
+              ↺ Restore
+            </button>
+          ` : `
+            <button class="btn-card-action primary" style="background: #10B981; border-color: #10B981;" title="Mark order Fulfilled and move to Archive" onclick="window.CFA_APP.setOrderStatus('${order.id}', 'completed')">
+              ✓ Fulfill
+            </button>
+          `}
+        `}
       </div>
     `;
 
@@ -881,6 +931,82 @@
     renderNewOrderMenuPicker();
     renderNewOrderItemsList();
     newOrderModal.classList.add('open');
+  }
+
+  // Re-book a past/fulfilled order for a future date (1-click repeat order for next year!)
+  function rebookOrder(orderId) {
+    const src = orders.find(o => o.id === orderId);
+    if (!src) return;
+
+    openNewOrderModal();
+    document.getElementById('new-order-customer').value = src.customer_name || '';
+    document.getElementById('new-order-phone').value = src.customer_phone || '';
+    document.getElementById('new-order-org').value = src.organization || '';
+    document.getElementById('new-order-type').value = src.order_type || 'Pickup';
+    document.getElementById('new-order-guests').value = src.guest_count || 10;
+    document.getElementById('new-order-notes').value = src.special_notes || '';
+
+    // Default pickup date to 1 year after their original event date (or 1 hour from now if already in the future)
+    const origDate = new Date(src.pickup_time);
+    if (!isNaN(origDate.getTime())) {
+      const nextYearDate = new Date(origDate);
+      if (nextYearDate <= new Date()) {
+        nextYearDate.setFullYear(new Date().getFullYear() + 1);
+      }
+      const localIso = new Date(nextYearDate.getTime() - nextYearDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      document.getElementById('new-order-time').value = localIso;
+    }
+
+    newOrderSelectedItems = Array.isArray(src.items)
+      ? src.items.map(it => ({
+          name: it.name,
+          category: it.category || 'Food & Menu',
+          quantity: Number(it.quantity) || 1,
+          unit: it.unit || 'count'
+        }))
+      : [];
+    renderNewOrderItemsList();
+    showToast(`🔄 Loaded ${src.customer_name}'s order (${newOrderSelectedItems.length} items) — choose new date & click Create!`);
+  }
+
+  // Export Fulfilled / Archived orders as CSV for annual customer outreach
+  function exportFulfilledCsv() {
+    const list = getFilteredOrders();
+    if (list.length === 0) {
+      showToast('No fulfilled orders match the current filter.', true);
+      return;
+    }
+
+    const csvEscape = val => `"${String(val || '').replace(/"/g, '""')}"`;
+    const headers = ['Event Date & Time', 'Order Number', 'Customer Name', 'Phone Number', 'Order Type', 'Delivery Address / Organization', 'Special Instructions', 'Items Ordered'];
+    const rows = list.map(o => {
+      const dateStr = formatPickupTime(o.pickup_time);
+      const itemsSummary = Array.isArray(o.items)
+        ? o.items.map(i => `${i.quantity}x ${i.name}`).join('; ')
+        : '';
+      return [
+        csvEscape(dateStr),
+        csvEscape(o.order_number),
+        csvEscape(o.customer_name),
+        csvEscape(o.customer_phone),
+        csvEscape(o.order_type),
+        csvEscape(o.organization),
+        csvEscape(o.special_notes),
+        csvEscape(itemsSummary)
+      ].join(',');
+    });
+
+    const csvContent = [headers.map(csvEscape).join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cfa-catering-customer-archive-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`📊 Exported ${list.length} fulfilled orders to CSV!`);
   }
 
   function renderNewOrderCategoryTabs() {
@@ -1239,6 +1365,20 @@
       });
     }
 
+    // Archive Month & Type filters (inside 📦 Fulfilled tab)
+    if (archiveMonthSelect) {
+      archiveMonthSelect.addEventListener('change', () => {
+        archiveMonthFilter = archiveMonthSelect.value || 'all';
+        renderOrders();
+      });
+    }
+    if (archiveTypeSelect) {
+      archiveTypeSelect.addEventListener('change', () => {
+        archiveTypeFilter = archiveTypeSelect.value || 'all';
+        renderOrders();
+      });
+    }
+
     // Menu search inside Quick Modification modal
     const quickModMenuSearch = document.getElementById('quick-mod-menu-search');
     if (quickModMenuSearch) {
@@ -1288,6 +1428,8 @@
     acknowledgeAlert,
     touchOrder,
     flagSelectedOrderStatus,
+    rebookOrder,
+    exportFulfilledCsv,
     setOrderStatus,
     deleteOrder,
     toggleFocusOrder,

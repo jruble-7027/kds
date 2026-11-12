@@ -61,7 +61,7 @@
         <button class="filter-tab" data-filter="due_soon">🔥 Due Soon <span class="tab-count" id="count-due_soon">0</span></button>
         <button class="filter-tab" data-filter="prep">👨‍🍳 Needs Prep <span class="tab-count" id="count-prep">0</span></button>
         <button class="filter-tab" data-filter="ready">✓ Ready <span class="tab-count" id="count-ready">0</span></button>
-        <button class="filter-tab" data-filter="completed">Fulfilled <span class="tab-count" id="count-completed">0</span></button>
+        <button class="filter-tab" data-filter="completed">📦 Fulfilled <span class="tab-count" id="count-completed">0</span></button>
       </div>
 
       <div class="subbar-right-actions">
@@ -86,6 +86,26 @@
 
   <!-- Main Grid Content -->
   <main class="main-content">
+    <!-- Customer Follow-Up & Archive Filter Bar (Shown when viewing 📦 Fulfilled tab) -->
+    <div id="archive-outreach-bar" class="archive-outreach-bar" style="display: none;">
+      <div class="archive-outreach-left">
+        <span style="font-weight: 800; color: #0F172A;">📅 Past Order Archive & Customer Follow-Up:</span>
+        <select id="archive-month-filter" class="form-select" style="width: auto; min-width: 175px; padding: 6px 10px; font-size: 0.85rem;">
+          <option value="all">All Event Months</option>
+        </select>
+        <select id="archive-type-filter" class="form-select" style="width: auto; min-width: 140px; padding: 6px 10px; font-size: 0.85rem;">
+          <option value="all">All Order Types</option>
+          <option value="Pickup">Pickup Only</option>
+          <option value="Delivery">Delivery Only</option>
+        </select>
+      </div>
+      <div class="archive-outreach-right">
+        <button type="button" class="btn-card-action" style="background: #0F172A; color: #FFF; border-color: #0F172A; padding: 6px 14px; font-size: 0.82rem;" onclick="window.CFA_APP.exportFulfilledCsv()">
+          📊 Export Follow-Up List (CSV)
+        </button>
+      </div>
+    </div>
+
     <div id="focus-backdrop" class="focus-backdrop" onclick="window.CFA_APP.toggleFocusOrder(null, event)"></div>
     <div id="orders-grid" class="orders-grid">
       <!-- Dynamically generated order cards will appear here -->

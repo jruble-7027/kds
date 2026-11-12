@@ -1668,6 +1668,40 @@ body.kitchen-mode .order-card.is-cancelled-order .card-header {
   opacity: 0.9;
 }
 
+/* Archive & Next-Year Customer Outreach Toolbar (shown in 📦 Fulfilled tab) */
+.archive-outreach-bar {
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  border-left: 5px solid #10B981;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.archive-outreach-left,
+.archive-outreach-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+body.kitchen-mode .archive-outreach-bar {
+  background: #1E293B;
+  border-color: #334155;
+  border-left-color: #10B981;
+}
+
+body.kitchen-mode .archive-outreach-bar span {
+  color: #F8FAFC !important;
+}
+
 /* Responsive tweaks */
 @media (max-width: 768px) {
   .header-top {

@@ -228,8 +228,15 @@ function getFullOrder(orderId) {
   return { ...order, items, logs };
 }
 
-// Helper: Get all orders (including already-synced orders that entered 'cancelled' or 'error' status so the kitchen sees the warning banner until removed)
+// Helper: Get all orders (auto-archives past orders > 2 hours after pickup_time into 'completed' / Fulfilled so they don't clutter All Active)
 function getAllOrders() {
+  const autoArchiveCutoffIso = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  db.prepare(`
+    UPDATE orders
+    SET status = 'completed', is_new_unseen = 0, has_unacknowledged_change = 0
+    WHERE pickup_time < ? AND status IN ('new', 'in_prep', 'ready')
+  `).run(autoArchiveCutoffIso);
+
   const orders = db.prepare('SELECT * FROM orders ORDER BY pickup_time ASC').all();
   return orders.map(order => {
     const items = db.prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY is_recently_added DESC, category ASC, name ASC').all(order.id);
@@ -598,15 +605,15 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // If the order is NOT already on the KDS and its pickup_time is before current time, DO NOT SYNC IT!
+      // If the order is NOT already on the KDS and has no valid pickup_time or its pickup_time is before current time, DO NOT SYNC IT!
       const incomingTimeMs = data.pickup_time ? new Date(data.pickup_time).getTime() : NaN;
-      if (!existing && !isNaN(incomingTimeMs) && incomingTimeMs < Date.now()) {
+      if (!existing && (isNaN(incomingTimeMs) || incomingTimeMs < Date.now())) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: true,
           mode: 'skipped_past_order',
           skipped: true,
-          reason: 'Order pickup time is in the past'
+          reason: 'Order pickup time is missing or in the past'
         }));
         return;
       }
@@ -962,12 +969,22 @@ const server = http.createServer(async (req, res) => {
         WHERE id = ?
       `).run(newVerified, verifiedBy, verifiedAt, itemId);
 
-      // Touching an item also clears the bright green 'is_new_unseen' flag on the order
-      db.prepare('UPDATE orders SET is_new_unseen = 0, updated_at = ? WHERE id = ?').run(now, item.order_id);
-
-      // Check if all items in order are verified, auto-suggest 'ready' status if not already
+      // Check if all items in order are verified, auto-advance 'new' -> 'in_prep' -> 'ready'
       const allItems = db.prepare('SELECT is_verified FROM order_items WHERE order_id = ?').all(item.order_id);
-      const allChecked = allItems.every(i => i.is_verified === 1);
+      const verifiedCountNow = allItems.filter(i => i.is_verified === 1).length;
+      const allChecked = allItems.length > 0 && verifiedCountNow === allItems.length;
+      const currentOrd = db.prepare('SELECT status FROM orders WHERE id = ?').get(item.order_id);
+      let nextOrdStatus = currentOrd ? currentOrd.status : 'new';
+      if (currentOrd && ['new', 'in_prep', 'ready'].includes(currentOrd.status)) {
+        if (allChecked) {
+          nextOrdStatus = 'ready';
+        } else if (verifiedCountNow > 0 && currentOrd.status === 'new') {
+          nextOrdStatus = 'in_prep';
+        }
+      }
+
+      // Touching an item also clears the bright green 'is_new_unseen' flag on the order
+      db.prepare('UPDATE orders SET status = ?, is_new_unseen = 0, updated_at = ? WHERE id = ?').run(nextOrdStatus, now, item.order_id);
 
       // Log verification
       db.prepare(`
