@@ -522,9 +522,9 @@
       </div>
     </div>
 
-    <button id="cfa-kds-fab" class="cfa-kds-fab" title="Open Chick-fil-A Kitchen KDS Companion">
+    <button id="cfa-kds-fab" class="cfa-kds-fab" title="Open Kitchen KDS Companion">
       <span id="cfa-kds-dot" class="cfa-kds-status-dot"></span>
-      <span>🐔 Kitchen KDS Sync</span>
+      <span>🍳 Kitchen KDS Sync</span>
     </button>
   `;
 
