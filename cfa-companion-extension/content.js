@@ -418,6 +418,17 @@
           <button id="cfa-kds-sync-all-btn" class="cfa-kds-sync-all-btn">
             📥 Sync All Orders + Food Details to Kitchen KDS
           </button>
+
+          <!-- Game Day Auto-Refresh & Upload Control -->
+          <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #BFDBFE; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+            <select id="cfa-kds-autosync-interval" class="cfa-kds-select" style="flex: 1; min-width: 155px; font-size: 11.5px; padding: 4px 6px; font-weight: 600;">
+              <option value="0">⏸️ Auto-Refresh: Off</option>
+              <option value="15">⏱️ Auto-Refresh: Every 15m (Game Day)</option>
+              <option value="10">⏱️ Auto-Refresh: Every 10m</option>
+              <option value="5">⏱️ Auto-Refresh: Every 5m</option>
+            </select>
+            <span id="cfa-kds-autosync-status" style="font-size: 11px; color: #1E40AF; font-weight: 700; white-space: nowrap;">Off</span>
+          </div>
         </div>
 
         <!-- Section 1: Selected Guest Order -->
@@ -921,12 +932,16 @@
   }
 
   // Sync ALL Upcoming Orders + Automatically open each Order Summary to pull Food & Quantities!
-  syncAllBtn.addEventListener('click', async () => {
+  async function runBulkDashboardSync({ isAuto = false } = {}) {
+    if (isBulkCrawling) return;
+
     const rows = scanCfaDashboardAndTabs();
     if (rows.length === 0) {
       const openSummary = await checkAndAutoSyncOpenOrderSummary();
       if (openSummary) return;
-      showToast('No Upcoming order rows found on page.', 'error');
+      if (!isAuto) {
+        showToast('No Upcoming order rows found on page.', 'error');
+      }
       return;
     }
 
@@ -967,7 +982,7 @@
           items: orderItems,
           flash_kitchen: false,
           sync_mode: 'sync',
-          submitted_by: 'CFA Home Dashboard Deep-Sync'
+          submitted_by: isAuto ? 'CFA Home Game-Day Auto-Sync' : 'CFA Home Dashboard Deep-Sync'
         }
       });
 
@@ -978,12 +993,112 @@
     syncAllBtn.disabled = false;
     syncAllBtn.textContent = `📥 Sync All (${rows.length}) Orders + Food Details to KDS`;
 
+    const timeStamp = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    localStorage.setItem('cfa_kds_last_autosync_time', timeStamp);
+
     showToast(
-      `✓ Synced ${syncedCount} orders (${itemsCapturedCount} food items) to Kitchen KDS!`,
+      `✓ ${isAuto ? 'Auto-Synced' : 'Synced'} ${syncedCount} orders (${itemsCapturedCount} food items) at ${timeStamp}!`,
       'success'
     );
     await refreshKdsOrders();
+  }
+
+  syncAllBtn.addEventListener('click', () => {
+    runBulkDashboardSync({ isAuto: false });
   });
+
+  // --- GAME DAY AUTO-REFRESH & UPLOAD ENGINE (Default option: Every 15 Minutes) ---
+  const autoSyncSelect = document.getElementById('cfa-kds-autosync-interval');
+  const autoSyncStatus = document.getElementById('cfa-kds-autosync-status');
+
+  // Default to 15 minutes if never configured before, or restore saved setting
+  const savedAutoSyncMins = localStorage.getItem('cfa_kds_autosync_mins');
+  let autoSyncMinutes = savedAutoSyncMins !== null ? Number(savedAutoSyncMins) : 15;
+  if (![0, 5, 10, 15].includes(autoSyncMinutes)) autoSyncMinutes = 15;
+  autoSyncSelect.value = String(autoSyncMinutes);
+
+  let autoSyncRemainingSec = autoSyncMinutes * 60;
+
+  function formatCountdown(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function updateAutoSyncStatusBadge() {
+    if (autoSyncMinutes <= 0) {
+      autoSyncStatus.textContent = 'Paused';
+      autoSyncStatus.style.color = '#64748B';
+      return;
+    }
+    const lastTime = localStorage.getItem('cfa_kds_last_autosync_time');
+    const prefix = lastTime ? `✓ ${lastTime} • ` : '';
+    autoSyncStatus.textContent = `${prefix}Next: ${formatCountdown(autoSyncRemainingSec)}`;
+    autoSyncStatus.style.color = '#1E40AF';
+  }
+
+  autoSyncSelect.addEventListener('change', () => {
+    autoSyncMinutes = Number(autoSyncSelect.value) || 0;
+    localStorage.setItem('cfa_kds_autosync_mins', String(autoSyncMinutes));
+    autoSyncRemainingSec = autoSyncMinutes * 60;
+    updateAutoSyncStatusBadge();
+    if (autoSyncMinutes > 0) {
+      showToast(`⏱️ Game Day Auto-Refresh set to every ${autoSyncMinutes} minutes!`, 'success');
+    } else {
+      showToast('⏸️ Auto-Refresh turned off.', 'success');
+    }
+  });
+
+  if (window === window.top) {
+    updateAutoSyncStatusBadge();
+
+    // Check if the page just reloaded from an Auto-Refresh cycle
+    if (sessionStorage.getItem('cfa_kds_pending_autosync') === '1') {
+      sessionStorage.removeItem('cfa_kds_pending_autosync');
+      autoSyncStatus.textContent = '⏳ Waiting for CMT rows...';
+
+      let attempts = 0;
+      const waitPoll = setInterval(async () => {
+        attempts++;
+        const rows = scanCfaDashboardAndTabs();
+        if (rows.length > 0 || attempts >= 10) {
+          clearInterval(waitPoll);
+          if (rows.length > 0) {
+            autoSyncStatus.textContent = `⏳ Auto-Syncing (${rows.length})...`;
+            // Brief 1s settle time so all table rows finish rendering
+            await new Promise((r) => setTimeout(r, 1000));
+            await runBulkDashboardSync({ isAuto: true });
+          }
+          autoSyncRemainingSec = autoSyncMinutes * 60;
+          updateAutoSyncStatusBadge();
+        }
+      }, 1500);
+    }
+
+    // 1-second tick for the Game Day Auto-Refresh countdown
+    setInterval(() => {
+      if (autoSyncMinutes <= 0 || isBulkCrawling) return;
+
+      autoSyncRemainingSec--;
+      if (autoSyncRemainingSec <= 0) {
+        // Postpone 30s if someone is actively typing in the extension widget
+        const activeEl = document.activeElement;
+        if (activeEl && root.contains(activeEl) && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+          autoSyncRemainingSec = 30;
+          updateAutoSyncStatusBadge();
+          return;
+        }
+
+        // Trigger page reload and mark pending auto-sync in sessionStorage
+        autoSyncStatus.textContent = '🔄 Refreshing CMT...';
+        sessionStorage.setItem('cfa_kds_pending_autosync', '1');
+        window.location.reload();
+        return;
+      }
+
+      updateAutoSyncStatusBadge();
+    }, 1000);
+  }
 
   scanBtn.addEventListener('click', async () => {
     const rows = scanCfaDashboardAndTabs();
