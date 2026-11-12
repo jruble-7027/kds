@@ -1052,6 +1052,26 @@ body.kitchen-mode .customer-name {
   font-size: 1.1rem;
 }
 
+.customer-phone {
+  font-weight: 700;
+  color: #334155;
+  margin-top: 2px;
+}
+
+.customer-delivery {
+  font-weight: 700;
+  color: #B45309;
+  margin-top: 2px;
+}
+
+body.kitchen-mode .customer-phone {
+  color: #38BDF8;
+}
+
+body.kitchen-mode .customer-delivery {
+  color: #FBBF24;
+}
+
 body.kitchen-mode .time-val {
   color: #F8FAFC;
   font-size: 0.96rem;

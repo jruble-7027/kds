@@ -416,8 +416,8 @@
             ${isFocused ? `<span class="focus-toggle-pill active">✕ Close Full View</span>` : ''}
           </div>
           <div class="customer-name">${escapeHtml(order.customer_name)}</div>
-          ${order.customer_phone ? `<div class="customer-org" style="font-weight:700; color:#0F172A; margin-top:2px;">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
-          ${order.organization ? `<div class="customer-org" style="color:#B45309; font-weight:700; margin-top:2px;">📍 Delivery: ${escapeHtml(order.organization)}</div>` : ''}
+          ${order.customer_phone ? `<div class="customer-org customer-phone">📞 ${escapeHtml(order.customer_phone)}</div>` : ''}
+          ${order.organization ? `<div class="customer-org customer-delivery">📍 Delivery: ${escapeHtml(order.organization)}</div>` : ''}
         </div>
         <div class="timing-badge">
           <div class="time-val">${formatPickupTime(order.pickup_time)}</div>
