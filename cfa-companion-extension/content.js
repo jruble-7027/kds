@@ -676,19 +676,26 @@
     } catch (e) {}
   }
 
-  function isDownloadOrPrintElement(el) {
+  function isUnsafeActionElement(el) {
     if (!el) return false;
-    const href = (el.getAttribute('href') || '').toLowerCase();
-    const download = el.getAttribute('download');
-    if (download !== null) return true;
-    if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip/i.test(href)) return true;
-    const title = (el.getAttribute('title') || '').toLowerCase();
-    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
-    const cls = (el.className || '').toLowerCase();
-    const text = (el.innerText || '').trim().toLowerCase();
-    if (/download|print|export|pdf|slip|invoice|receipt/i.test(`${title} ${aria} ${cls} ${text}`)) {
-      return true;
-    }
+    try {
+      const candidates = [el, el.parentElement, el.closest('a, button, [role="button"], [role="menuitem"], td, th, div')].filter(Boolean);
+      for (const node of candidates) {
+        if (node.hasAttribute && node.hasAttribute('download')) return true;
+        const href = (node.getAttribute && node.getAttribute('href') || '').toLowerCase();
+        if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip|edit|modify|change|cancel|delete|trash/i.test(href)) {
+          return true;
+        }
+        const title = (node.getAttribute && node.getAttribute('title') || '').toLowerCase();
+        const aria = (node.getAttribute && node.getAttribute('aria-label') || '').toLowerCase();
+        const cls = (node.className || '').toString().toLowerCase();
+        const text = (node.innerText || '').trim().toLowerCase();
+        const combined = `${href} ${title} ${aria} ${cls} ${text}`;
+        if (/download|print|export|pdf|slip|invoice|receipt|edit\s+order|\bedit\b|modify|pencil|change\s+order|cancel|delete|trash|kebab|more\s*action|dropdown/i.test(combined)) {
+          return true;
+        }
+      }
+    } catch (e) {}
     return false;
   }
 
@@ -699,7 +706,7 @@
 
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el) || isDownloadOrPrintElement(el)) continue;
+      if (root.contains(el) || isUnsafeActionElement(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       if (t === lowerTarget || (parts.length >= 2 && t.includes(parts[0]) && t.includes(parts[1]) && t.length < 40)) {
         return el;
@@ -736,7 +743,7 @@
     // Second pass: any candidate element containing both
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el) || isDownloadOrPrintElement(el)) continue;
+      if (root.contains(el) || isUnsafeActionElement(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
       const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
@@ -748,7 +755,7 @@
     return findClickableElementForGuest(guestName);
   }
 
-  // Safely get clickable element for a specific row object (Never clicks download or print actions!)
+  // Safely get clickable element for a specific row object (Never clicks download, print, edit, or modify actions!)
   function findClickableElementForRow(row) {
     if (!row) return null;
     const container = (row.domElement && document.body.contains(row.domElement))
@@ -757,40 +764,50 @@
 
     if (!container) return null;
 
-    // 1. First priority: The specific element or cell containing the guest name
-    if (row.guestName) {
-      const guestLower = row.guestName.toLowerCase().trim();
-      const textNodes = Array.from(container.querySelectorAll('td, [role="cell"], a, button:not(.cfa-kds-row-btn), span, div'));
-      for (const el of textNodes) {
-        if (isDownloadOrPrintElement(el) || el.closest('a[download], a[href*="pdf" i], a[href*="download" i]')) continue;
-        const txt = (el.innerText || '').trim().toLowerCase();
-        if (txt === guestLower || (guestLower.length >= 4 && txt.includes(guestLower))) {
+    // 1. First priority: An element matching the order number (e.g. #12345 or row.orderNumber)
+    if (row.orderNumber) {
+      const numClean = row.orderNumber.replace(/^[#\s]+/, '').trim().toLowerCase();
+      const numNodes = Array.from(container.querySelectorAll('a, button:not(.cfa-kds-row-btn), [role="button"], td, span, div'));
+      for (const el of numNodes) {
+        if (isUnsafeActionElement(el)) continue;
+        const txt = (el.innerText || '').replace(/^[#\s]+/, '').trim().toLowerCase();
+        if (txt === numClean && txt.length >= 3) {
           return el;
         }
       }
     }
 
-    // 2. Second priority: The first data cell (excluding action button/download columns)
+    // 2. Second priority: An element whose text EXACTLY equals guest name (never substring, so we don't hit tooltips like "Edit order for Garner Food"!)
+    if (row.guestName) {
+      const guestLower = row.guestName.toLowerCase().trim();
+      const textNodes = Array.from(container.querySelectorAll('a, button:not(.cfa-kds-row-btn), [role="button"], td, span, div'));
+      for (const el of textNodes) {
+        if (isUnsafeActionElement(el)) continue;
+        const txt = (el.innerText || '').trim().toLowerCase();
+        if (txt === guestLower) {
+          return el;
+        }
+      }
+    }
+
+    // 3. Third priority: The first or second data cell only (Order # or Guest column, never action columns)
     const dataCells = Array.from(container.querySelectorAll('td:not(.cfa-kds-row-action-cell), [role="cell"]'));
-    for (const cell of dataCells) {
-      if (isDownloadOrPrintElement(cell)) continue;
+    for (let c = 0; c < Math.min(2, dataCells.length); c++) {
+      const cell = dataCells[c];
+      if (isUnsafeActionElement(cell)) continue;
       const innerA = cell.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"]');
-      if (innerA && !isDownloadOrPrintElement(innerA)) {
+      if (innerA && !isUnsafeActionElement(innerA)) {
         return innerA;
       }
       return cell;
     }
 
-    // 3. Fallback to row container itself
-    if (!isDownloadOrPrintElement(container)) {
-      return container;
-    }
     return null;
   }
 
-  // Tablet & Mobile friendly tap / click dispatcher (safeguarded against downloads/prints)
+  // Tablet & Mobile friendly tap / click dispatcher (safeguarded against downloads/prints/edits)
   function triggerElementTap(el) {
-    if (!el || isDownloadOrPrintElement(el)) return;
+    if (!el || isUnsafeActionElement(el)) return;
     try {
       if (typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -1138,9 +1155,9 @@
         const parsed = parseOpenOrderSummary();
         if (
           parsed &&
+          Array.isArray(parsed.items) &&
           parsed.items.length > 0
         ) {
-          // If expected time is provided, verify it matches
           let timeMatches = false;
           if (expectedTimeClean && parsed.pickupTimeStr) {
             const parsedTm = parsed.pickupTimeStr.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
@@ -1149,15 +1166,17 @@
             }
           }
 
-          const parsedGuestLower = (parsed.guestName || '').toLowerCase();
-          const nameMatches =
-            !targetLower ||
-            !parsedGuestLower ||
-            parsedGuestLower.includes(targetLower) ||
-            targetLower.includes(parsedGuestLower) ||
-            targetWords.some((w) => parsedGuestLower.includes(w));
+          const parsedGuestLower = (parsed.guestName || '').toLowerCase().trim();
+          let nameMatches = false;
+          if (parsedGuestLower && targetLower) {
+            nameMatches =
+              parsedGuestLower.includes(targetLower) ||
+              targetLower.includes(parsedGuestLower) ||
+              (targetWords.length > 0 && targetWords.every((w) => parsedGuestLower.includes(w)));
+          }
 
-          if (timeMatches || nameMatches) {
+          // Strictly require either a matching guest name or (if guest name is blank in modal) matching pickup time
+          if (nameMatches || (timeMatches && !parsedGuestLower)) {
             clearInterval(timer);
             resolve(parsed);
             return;
@@ -1165,7 +1184,8 @@
         }
         if (Date.now() - start >= timeoutMs) {
           clearInterval(timer);
-          resolve(parsed && parsed.items.length > 0 ? parsed : null);
+          // On timeout, NEVER resolve with an arbitrary modal from another guest!
+          resolve(null);
         }
       }, 100);
     });
@@ -1257,7 +1277,10 @@
         continue;
       }
 
-      const orderItems = summary && summary.items ? summary.items : [];
+      // Preserve existing KDS food items if summary was null or had 0 items
+      const orderItems = (summary && Array.isArray(summary.items) && summary.items.length > 0)
+        ? summary.items
+        : (alreadyOnKds && Array.isArray(alreadyOnKds.items) && alreadyOnKds.items.length > 0 ? alreadyOnKds.items : []);
       if (orderItems.length > 0) itemsCapturedCount += orderItems.length;
 
       const finalTimeStr = (summary && summary.pickupTimeStr) || row.promisedDate;

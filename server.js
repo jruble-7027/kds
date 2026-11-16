@@ -639,34 +639,39 @@ const server = http.createServer(async (req, res) => {
 
         const itemsAdded = [];
 
-        if (Array.isArray(data.items) && data.items.length > 0) {
+        const validIncomingItems = Array.isArray(data.items)
+          ? data.items.filter((it) => it && it.name && it.name.trim().length > 0)
+          : [];
+
+        if (validIncomingItems.length > 0) {
           if (data.sync_mode === 'sync' && !data.flash_kitchen) {
             // Cleanly replace base Food & Menu items from Order Summary while keeping manual Quick-Add items
             db.prepare("DELETE FROM order_items WHERE order_id = ? AND is_recently_added = 0").run(existing.id);
-            for (const it of data.items) {
-              if (!it.name) continue;
+            for (const it of validIncomingItems) {
               db.prepare(`
                 INSERT INTO order_items (id, order_id, name, category, quantity, unit, notes, is_recently_added, added_at, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
               `).run(
-                'item-' + crypto.randomUUID().slice(0, 8), existing.id, it.name, it.category || 'Food & Menu',
+                'item-' + crypto.randomUUID().slice(0, 8), existing.id, it.name.trim(), it.category || 'Food & Menu',
                 Number(it.quantity) || 1, it.unit || 'count', it.notes || '', now, now
               );
             }
           } else {
             // Quick-Add mode: append new items with flashing alert
-            for (const it of data.items) {
-              if (!it.name) continue;
+            for (const it of validIncomingItems) {
               db.prepare(`
                 INSERT INTO order_items (id, order_id, name, category, quantity, unit, notes, is_recently_added, added_at, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
               `).run(
-                'item-' + crypto.randomUUID().slice(0, 8), existing.id, it.name, it.category || 'Sauces & Additions',
+                'item-' + crypto.randomUUID().slice(0, 8), existing.id, it.name.trim(), it.category || 'Sauces & Additions',
                 Number(it.quantity) || 1, it.unit || 'count', it.notes || '', now, now
               );
-              itemsAdded.push(`${it.quantity || 1}x ${it.name}`);
+              itemsAdded.push(`${it.quantity || 1}x ${it.name.trim()}`);
             }
           }
+        } else {
+          // If incoming items is empty, NEVER delete or overwrite existing food items!
+          // Existing items on KDS remain intact.
         }
 
         // If an already-synced order transitions to Cancelled or Error on CFA Home, immediately alert the Kitchen!
