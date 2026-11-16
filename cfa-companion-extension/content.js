@@ -225,12 +225,38 @@
     };
   }
 
+  // Helper: Find open Order Summary modal element if present so background table rows never pollute modal text
+  function findOpenOrderModalElement() {
+    if (!document.body) return null;
+    const dialogs = Array.from(document.querySelectorAll(
+      '[role="dialog"], [aria-modal="true"], .cdk-overlay-pane, .modal, [class*="modal-content" i], [class*="modal-dialog" i], [class*="modal" i], [class*="dialog" i]'
+    ));
+    let bestEl = null;
+    let bestLen = Infinity;
+    for (const d of dialogs) {
+      if (root && root.contains(d)) continue;
+      const t = (d.innerText || '').trim();
+      if (t.length > 30 && t.length < bestLen && /Item\s+Name/i.test(t) && /Subtotal/i.test(t)) {
+        bestEl = d;
+        bestLen = t.length;
+      }
+    }
+    return bestEl;
+  }
+
   // Precision Parser for the Open Order Modal on order-management.cfahome.com:
   // 1. Reads Event Summary header fields: Pickup/Delivery Time, Primary Contact Name & Cell #, Delivery Address (if Delivery), Special Instructions
   // 2. Reads Food Items + Quantities strictly between "Item Name" ("Quantity" / "Price") and "Subtotal" (ignoring Price!)
   function parseOpenOrderSummary(rawPageText) {
-    const text = (rawPageText || (document.body ? document.body.innerText : ''))
-      .replace(root ? root.innerText || '' : '');
+    let text = rawPageText;
+    if (!text) {
+      const modalEl = findOpenOrderModalElement();
+      if (modalEl) {
+        text = modalEl.innerText || '';
+      } else {
+        text = (document.body ? document.body.innerText : '').replace(root ? root.innerText || '' : '');
+      }
+    }
 
     if (!/Item\s+Name/i.test(text) || !/Subtotal/i.test(text)) {
       return null;
@@ -305,8 +331,13 @@
       for (let i = 0; i < headerLines.length; i++) {
         if (/^(?:✓\s*|×\s*|✕\s*|⚠️\s*)?(?:Payment\s+(?:Received|Pending|Status|Error|Failed)|Order\s+Cancell?ed|Cancell?ed|Error)$/i.test(headerLines[i]) && i > 0) {
           const candidate = headerLines[i - 1].replace(/^[✓×✕\s]+/, '').trim();
-          if (candidate.length >= 2 && candidate.length <= 45 && !/Source|Total|Method|Event\s+Summary/i.test(candidate)) {
+          if (
+            candidate.length >= 2 &&
+            candidate.length <= 45 &&
+            !/^\$|\d{1,2}:\d{2}|\b(Source|Total|Method|Pickup|Delivery|Curbside|Promised|Event\s+Summary|Catering\s+Management|Mobile\s+App|Web)\b/i.test(candidate)
+          ) {
             guestName = candidate;
+            break;
           }
         }
       }
@@ -687,6 +718,7 @@
   }
 
   // Dismiss any open CFA Home modal/overlay so it doesn't block background table row clicks
+  // NEVER clicks Download, Print, or Edit Order buttons inside the modal!
   function closeOpenCfaModal() {
     try {
       // 1. Dispatch Escape key to cancel/close any active dialog
@@ -695,46 +727,46 @@
       document.dispatchEvent(new KeyboardEvent('keyup', escOptions));
       window.dispatchEvent(new KeyboardEvent('keydown', escOptions));
 
-      // 2. Click any explicit close or dismiss buttons in modal dialogs (excluding extension elements)
+      // 2. Click explicit close buttons by aria-label / class / title (never Edit or Download/Print)
       const closeBtns = Array.from(document.querySelectorAll(
-        'button[aria-label*="close" i], button[title*="close" i], button.close, [class*="modal" i] button[class*="close" i], [role="dialog"] button[aria-label*="close" i], [role="dialog"] button:has(svg), .cdk-overlay-pane button[aria-label*="close" i]'
+        'button[aria-label*="close" i], button[title*="close" i], button.close, [class*="modal" i] button[class*="close" i], [role="dialog"] button[aria-label*="close" i], .cdk-overlay-pane button[aria-label*="close" i]'
       ));
       for (const b of closeBtns) {
         if (root.contains(b)) continue;
+        const meta = `${b.getAttribute('aria-label') || ''} ${b.getAttribute('title') || ''} ${b.className || ''} ${b.innerText || ''}`;
+        if (/edit|print|download|export|pdf|modify/i.test(meta)) continue;
         b.click();
       }
 
-      // 3. Click backdrop if present
+      // 3. If the Order Summary modal is STILL open (its top-right 'X' button is an <svg> without aria-label="close"),
+      // find ONLY the single top-rightmost 'X' button in the modal header bar and click it.
+      const openModal = findOpenOrderModalElement();
+      if (openModal) {
+        const modalRect = openModal.getBoundingClientRect();
+        const modalBtns = Array.from(openModal.querySelectorAll('button, [role="button"]')).filter((b) => {
+          if (root.contains(b)) return false;
+          const txt = (b.innerText || '').trim();
+          if (txt.length > 0 && !/^(×|✕|✖|x|close)$/i.test(txt)) return false;
+          const meta = `${b.getAttribute('aria-label') || ''} ${b.getAttribute('title') || ''} ${b.className || ''} ${b.id || ''}`;
+          if (/edit|print|download|export|pdf|modify|delete|cancel/i.test(meta)) return false;
+          const r = b.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) return false;
+          return r.top >= modalRect.top - 10 && r.top <= modalRect.top + 90;
+        });
+
+        if (modalBtns.length > 0) {
+          modalBtns.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
+          modalBtns[0].click();
+        }
+      }
+
+      // 4. Click backdrop if present
       const backdrops = Array.from(document.querySelectorAll('.modal-backdrop, .cdk-overlay-backdrop, [class*="backdrop" i]'));
       for (const bd of backdrops) {
         if (root.contains(bd)) continue;
         bd.click();
       }
     } catch (e) {}
-  }
-
-  function isUnsafeActionElement(el) {
-    if (!el) return false;
-    try {
-      const candidates = [el, el.parentElement, el.closest('a, button, [role="button"], [role="menuitem"], td, th, div')].filter(Boolean);
-      for (const node of candidates) {
-        if (node.hasAttribute && node.hasAttribute('download')) return true;
-        const href = (node.getAttribute && node.getAttribute('href') || '').toLowerCase();
-        // Ban download, print, edit, modify, and guest/customer profile navigation links (which jump to Guest tab)
-        if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip|edit|modify|change|cancel|delete|trash|guest|customer|profile/i.test(href)) {
-          return true;
-        }
-        const title = (node.getAttribute && node.getAttribute('title') || '').toLowerCase();
-        const aria = (node.getAttribute && node.getAttribute('aria-label') || '').toLowerCase();
-        const cls = (node.className || '').toString().toLowerCase();
-        const text = (node.innerText || '').trim().toLowerCase();
-        const combined = `${href} ${title} ${aria} ${cls} ${text}`;
-        if (/download|print|export|pdf|slip|invoice|receipt|edit\s+order|\bedit\b|modify|pencil|change\s+order|cancel|delete|trash|kebab|more\s*action|dropdown|\bguest\b|customer\s+profile/i.test(combined)) {
-          return true;
-        }
-      }
-    } catch (e) {}
-    return false;
   }
 
   function findClickableElementForGuest(guestName) {
@@ -744,7 +776,7 @@
 
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el) || isUnsafeActionElement(el)) continue;
+      if (root.contains(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       if (t === lowerTarget || (parts.length >= 2 && t.includes(parts[0]) && t.includes(parts[1]) && t.length < 40)) {
         return el;
@@ -773,15 +805,15 @@
       const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
       const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
       if (guestMatch && timeMatch) {
-        const candidate = findClickableElementForRow({ domElement: el, guestName });
-        return candidate || el;
+        const clickable = el.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
+        return clickable || el;
       }
     }
 
     // Second pass: any candidate element containing both
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el) || isUnsafeActionElement(el)) continue;
+      if (root.contains(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
       const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
@@ -793,60 +825,21 @@
     return findClickableElementForGuest(guestName);
   }
 
-  // Safely get clickable element for a specific row object (Never clicks download, print, edit, or guest tab navigation!)
+  // Safely get clickable element for a specific row object
   function findClickableElementForRow(row) {
-    if (!row) return null;
-    const container = (row.domElement && document.body.contains(row.domElement))
-      ? row.domElement
-      : (row.guestName ? findClickableElementForGuestAndTime(row.guestName, row.promisedDate) : null);
-
-    if (!container) return null;
-
-    // 1. Priority 1: Neutral table data cells (like Promised Date, Method, Total)
-    // In CFA Home's Angular table, clicking any neutral table cell triggers the row's openOrderSummary() handler!
-    // It avoids clicking <a href="/guests/..."> which navigates away to the Guest tab.
-    const dataCells = Array.from(container.querySelectorAll('td:not(.cfa-kds-row-action-cell), [role="cell"]'));
-    for (const cell of dataCells) {
-      if (isUnsafeActionElement(cell)) continue;
-      // Make sure the cell doesn't have an inner guest profile link
-      const innerA = cell.querySelector('a, button');
-      if (innerA) {
-        if (isUnsafeActionElement(innerA)) continue;
-        const aHref = (innerA.getAttribute && innerA.getAttribute('href') || '').toLowerCase();
-        if (/guest|customer/i.test(aHref)) continue;
-      }
-      const cellText = (cell.innerText || '').trim();
-      // Target neutral cells: Date, Method, or Total
-      if (PROMISED_DATE_REGEX.test(cellText) || /\b(Pickup|Delivery|Curbside)\b/i.test(cellText) || /\$\d/i.test(cellText)) {
-        return cell;
-      }
+    if (row && row.domElement && document.body.contains(row.domElement)) {
+      const clickable = row.domElement.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
+      return clickable || row.domElement;
     }
-
-    // 2. Priority 2: Check for an explicit Order Summary button or Order Details element (NOT Guest profile!)
-    const orderDetailEls = Array.from(container.querySelectorAll('button:not(.cfa-kds-row-btn), a, [role="button"], span'));
-    for (const el of orderDetailEls) {
-      if (isUnsafeActionElement(el)) continue;
-      const href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
-      if (/guest|customer/i.test(href)) continue;
-      const aria = (el.getAttribute && el.getAttribute('aria-label') || '').toLowerCase();
-      const title = (el.getAttribute && el.getAttribute('title') || '').toLowerCase();
-      const txt = (el.innerText || '').trim().toLowerCase();
-      if (/order\s*summary|view\s*order|order\s*detail|event\s*summary/i.test(`${aria} ${title} ${txt}`)) {
-        return el;
-      }
+    if (row && row.guestName) {
+      return findClickableElementForGuestAndTime(row.guestName, row.promisedDate);
     }
-
-    // 3. Fallback: The row container itself (tr)
-    if (!isUnsafeActionElement(container)) {
-      return container;
-    }
-
     return null;
   }
 
-  // Tablet & Mobile friendly tap / click dispatcher (safeguarded against downloads/prints/edits)
+  // Tablet & Mobile friendly tap / click dispatcher
   function triggerElementTap(el) {
-    if (!el || isUnsafeActionElement(el)) return;
+    if (!el) return;
     try {
       if (typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -1176,8 +1169,13 @@
     rebuildDropdownOptions();
   }
 
+  function getSummarySignature(parsed) {
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return '';
+    return `${parsed.guestName || ''}|${parsed.pickupTimeStr || ''}|${parsed.items.map((i) => `${i.quantity}:${i.name}`).join(',')}`;
+  }
+
   // Wait for the Order Summary modal to actually display the target guest or matching time
-  function waitForGuestSummary(guestName, expectedTimeStr = '', timeoutMs = 2800) {
+  function waitForGuestSummary(guestName, expectedTimeStr = '', timeoutMs = 2800, previousSig = '') {
     return new Promise((resolve) => {
       const start = Date.now();
       const targetLower = (guestName || '').toLowerCase().trim();
@@ -1197,6 +1195,9 @@
           Array.isArray(parsed.items) &&
           parsed.items.length > 0
         ) {
+          const currentSig = getSummarySignature(parsed);
+          const isNewModal = !previousSig || currentSig !== previousSig;
+
           let timeMatches = false;
           if (expectedTimeClean && parsed.pickupTimeStr) {
             const parsedTm = parsed.pickupTimeStr.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
@@ -1206,16 +1207,14 @@
           }
 
           const parsedGuestLower = (parsed.guestName || '').toLowerCase().trim();
-          let nameMatches = false;
-          if (parsedGuestLower && targetLower) {
-            nameMatches =
-              parsedGuestLower.includes(targetLower) ||
-              targetLower.includes(parsedGuestLower) ||
-              (targetWords.length > 0 && targetWords.every((w) => parsedGuestLower.includes(w)));
-          }
+          const nameMatches =
+            !targetLower ||
+            !parsedGuestLower ||
+            parsedGuestLower.includes(targetLower) ||
+            targetLower.includes(parsedGuestLower) ||
+            targetWords.some((w) => parsedGuestLower.includes(w));
 
-          // Strictly require either a matching guest name or (if guest name is blank in modal) matching pickup time
-          if (nameMatches || (timeMatches && !parsedGuestLower)) {
+          if (isNewModal && (timeMatches || nameMatches || Date.now() - start >= 450)) {
             clearInterval(timer);
             resolve(parsed);
             return;
@@ -1223,8 +1222,7 @@
         }
         if (Date.now() - start >= timeoutMs) {
           clearInterval(timer);
-          // On timeout, NEVER resolve with an arbitrary modal from another guest!
-          resolve(null);
+          resolve(parsed && Array.isArray(parsed.items) && parsed.items.length > 0 ? parsed : null);
         }
       }, 100);
     });
@@ -1296,7 +1294,9 @@
 
       // 1. Close any previously open modal so backdrop doesn't block clicking this row
       closeOpenCfaModal();
-      await new Promise((r) => setTimeout(r, 180));
+      await new Promise((r) => setTimeout(r, 220));
+      const stalePreClick = parseOpenOrderSummary();
+      const prevSig = getSummarySignature(stalePreClick);
 
       // 2. Click the target row element with tablet touch + pointer events
       const clickTarget = findClickableElementForRow(row);
@@ -1305,7 +1305,7 @@
       }
 
       // 3. Wait for summary modal (up to 2800ms for tablet latency and Wi-Fi response)
-      const summary = await waitForGuestSummary(row.guestName, row.promisedDate, 2800);
+      const summary = await waitForGuestSummary(row.guestName, row.promisedDate, 2800, prevSig);
       const effectivePayStatus = (summary && summary.paymentStatus) || row.paymentStatus || 'Payment Received';
 
       // Double-check if modal revealed Error or Cancelled status
@@ -1335,7 +1335,7 @@
         type: 'KDS_SYNC_ORDER',
         payload: {
           order_number: row.orderNumber,
-          customer_name: (summary && summary.guestName) || row.guestName,
+          customer_name: row.guestName || (summary && summary.guestName),
           customer_phone: (summary && summary.contactPhone) || '',
           organization: (summary && summary.deliveryAddress) || '',
           pickup_time: finalPickupIso,
