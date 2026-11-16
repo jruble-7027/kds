@@ -473,98 +473,104 @@
           <button id="cfa-kds-clear-all" class="cfa-kds-secondary-btn" style="width:100%; padding:6px; margin-top:8px; background:#FEE2E2; color:#B91C1C; border-color:#FECACA; font-weight:700;">🗑️ Clear All Orders from KDS (Start Fresh)</button>
         </div>
 
-        <!-- Bulk Dashboard Sync Banner -->
-        <div id="cfa-kds-bulk-box" class="cfa-kds-section" style="background: #EFF6FF; border-color: #BFDBFE;">
-          <div class="cfa-kds-section-title" style="color: #1E40AF; margin-bottom: 6px;">
-            <span>📋 CFA Dashboard Orders Found: <strong id="cfa-kds-upcoming-count">0</strong></span>
-            <button id="cfa-kds-scan-btn" class="cfa-kds-secondary-btn">🔄 Re-Scan</button>
-          </div>
-          <button id="cfa-kds-sync-all-btn" class="cfa-kds-sync-all-btn">
-            📥 Sync All Orders + Food Details to Kitchen KDS
-          </button>
+        <div class="cfa-kds-columns">
+          <div class="cfa-kds-col">
+            <!-- Bulk Dashboard Sync Banner -->
+            <div id="cfa-kds-bulk-box" class="cfa-kds-section" style="background: #EFF6FF; border-color: #BFDBFE;">
+              <div class="cfa-kds-section-title" style="color: #1E40AF; margin-bottom: 6px;">
+                <span>📋 CFA Dashboard Orders Found: <strong id="cfa-kds-upcoming-count">0</strong></span>
+                <button id="cfa-kds-scan-btn" class="cfa-kds-secondary-btn">🔄 Re-Scan</button>
+              </div>
+              <button id="cfa-kds-sync-all-btn" class="cfa-kds-sync-all-btn">
+                📥 Sync All Orders + Food Details to Kitchen KDS
+              </button>
 
-          <!-- Game Day Auto-Refresh & Upload Control -->
-          <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #BFDBFE; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
-            <select id="cfa-kds-autosync-interval" class="cfa-kds-select" style="flex: 1; min-width: 155px; font-size: 11.5px; padding: 4px 6px; font-weight: 600;">
-              <option value="0">⏸️ Auto-Refresh: Off</option>
-              <option value="15">⏱️ Auto-Refresh: Every 15m (Game Day)</option>
-              <option value="10">⏱️ Auto-Refresh: Every 10m</option>
-              <option value="5">⏱️ Auto-Refresh: Every 5m</option>
-            </select>
-            <span id="cfa-kds-autosync-status" style="font-size: 11px; color: #1E40AF; font-weight: 700; white-space: nowrap;">Off</span>
-          </div>
-        </div>
+              <!-- Game Day Auto-Refresh & Upload Control -->
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #BFDBFE; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+                <select id="cfa-kds-autosync-interval" class="cfa-kds-select" style="flex: 1; min-width: 155px; font-size: 11.5px; padding: 4px 6px; font-weight: 600;">
+                  <option value="0">⏸️ Auto-Refresh: Off</option>
+                  <option value="15">⏱️ Auto-Refresh: Every 15m (Game Day)</option>
+                  <option value="10">⏱️ Auto-Refresh: Every 10m</option>
+                  <option value="5">⏱️ Auto-Refresh: Every 5m</option>
+                </select>
+                <span id="cfa-kds-autosync-status" style="font-size: 11px; color: #1E40AF; font-weight: 700; white-space: nowrap;">Off</span>
+              </div>
+            </div>
 
-        <!-- Section 1: Selected Guest Order -->
-        <div class="cfa-kds-section">
-          <div class="cfa-kds-section-title">
-            <span>1. Primary Contact & Pickup Info</span>
-            <span id="cfa-kds-promised-badge" style="font-size: 10.5px; color: #E5173F; font-weight: 700;"></span>
+            <!-- Section 1: Selected Guest Order -->
+            <div class="cfa-kds-section">
+              <div class="cfa-kds-section-title">
+                <span>1. Primary Contact & Pickup Info</span>
+                <span id="cfa-kds-promised-badge" style="font-size: 10.5px; color: #E5173F; font-weight: 700;"></span>
+              </div>
+
+              <div style="margin-bottom: 8px;">
+                <select id="cfa-kds-existing-select" class="cfa-kds-select">
+                  <option value="__new__">Select a Guest from Dashboard or KDS...</option>
+                </select>
+              </div>
+
+              <div class="cfa-kds-field-row">
+                <input id="cfa-kds-customer" class="cfa-kds-input" placeholder="Primary Contact Name" />
+                <input id="cfa-kds-phone" class="cfa-kds-input" placeholder="Cell # (e.g. 336-345-1221)" />
+              </div>
+
+              <div class="cfa-kds-field-row" style="margin-bottom: 0;">
+                <input id="cfa-kds-promised" class="cfa-kds-input" placeholder="Pickup / Delivery Time" />
+                <select id="cfa-kds-type" class="cfa-kds-select">
+                  <option value="Pickup">Pickup</option>
+                  <option value="Delivery">Delivery</option>
+                </select>
+              </div>
+              <input id="cfa-kds-order-num" type="hidden" />
+            </div>
+
+            <!-- Detected Order Summary Food Items (Auto-populated when an order is opened!) -->
+            <div id="cfa-kds-detected-items-box" class="cfa-kds-section" style="background: #ECFDF5; border-color: #A7F3D0; display: none;">
+              <div class="cfa-kds-section-title" style="color: #047857; margin-bottom: 4px;">
+                <span>🍗 Item Name & Quantity (<span id="cfa-kds-detected-count">0</span>)</span>
+                <span style="font-size: 10px; color: #059669;">✓ Synced to KDS</span>
+              </div>
+              <div id="cfa-kds-detected-list" style="font-size: 12px; color: #065F46; max-height: 80px; overflow-y: auto;"></div>
+            </div>
           </div>
 
-          <div style="margin-bottom: 8px;">
-            <select id="cfa-kds-existing-select" class="cfa-kds-select">
-              <option value="__new__">Select a Guest from Dashboard or KDS...</option>
-            </select>
-          </div>
+          <div class="cfa-kds-col">
+            <!-- Section 2: 1-Click Phone Call / Sauce Additions (Flashes Kitchen Red) -->
+            <div class="cfa-kds-section">
+              <div class="cfa-kds-section-title">
+                <span>2. Instant Add & Flash Kitchen Red 🚨</span>
+              </div>
+              <div class="cfa-kds-presets">
+                <button class="cfa-kds-preset-btn" data-name="Barbeque Sauce Packets" data-qty="50" data-cat="Sauces" data-unit="Packets">⚡ +50 BBQ Sauces</button>
+                <button class="cfa-kds-preset-btn" data-name="Chick-fil-A® Sauce Packets" data-qty="50" data-cat="Sauces" data-unit="Packets">⚡ +50 CFA Sauces</button>
+                <button class="cfa-kds-preset-btn" data-name="Polynesian Sauce Packets" data-qty="25" data-cat="Sauces" data-unit="Packets">⚡ +25 Polynesian</button>
+                <button class="cfa-kds-preset-btn" data-name="Garden Herb Ranch Packets" data-qty="25" data-cat="Sauces" data-unit="Packets">⚡ +25 Ranch</button>
+                <button class="cfa-kds-preset-btn" data-name="Sweet Tea Gallon" data-qty="2" data-cat="Beverages" data-unit="Gallons">⚡ +2 Gal Sweet Tea</button>
+                <button class="cfa-kds-preset-btn" data-name="Serving Utensils & Plates Kit" data-qty="25" data-cat="Paper Goods" data-unit="Sets">⚡ +25 Plates/Utensils</button>
+              </div>
+            </div>
 
-          <div class="cfa-kds-field-row">
-            <input id="cfa-kds-customer" class="cfa-kds-input" placeholder="Primary Contact Name" />
-            <input id="cfa-kds-phone" class="cfa-kds-input" placeholder="Cell # (e.g. 336-345-1221)" />
+            <!-- Section 3: Custom Item or Urgent Kitchen Alert Note -->
+            <div class="cfa-kds-section">
+              <div class="cfa-kds-section-title">
+                <span>3. Custom Addition / Kitchen Flash Note</span>
+              </div>
+              <div class="cfa-kds-field-row">
+                <input id="cfa-kds-custom-item" class="cfa-kds-input" placeholder="Item (e.g. Cookie Tray)" />
+                <input id="cfa-kds-custom-qty" type="number" min="1" value="1" class="cfa-kds-input" placeholder="Qty" />
+              </div>
+              <textarea id="cfa-kds-note" class="cfa-kds-textarea" placeholder="Urgent kitchen note (e.g. Guest called to add 50 BBQ sauces)..."></textarea>
+              <button id="cfa-kds-send-btn" class="cfa-kds-primary-btn" style="margin-top: 8px;">
+                🚨 Send to Kitchen KDS (Flash Red)
+              </button>
+            </div>
           </div>
-
-          <div class="cfa-kds-field-row" style="margin-bottom: 0;">
-            <input id="cfa-kds-promised" class="cfa-kds-input" placeholder="Pickup / Delivery Time" />
-            <select id="cfa-kds-type" class="cfa-kds-select">
-              <option value="Pickup">Pickup</option>
-              <option value="Delivery">Delivery</option>
-            </select>
-          </div>
-          <input id="cfa-kds-order-num" type="hidden" />
-        </div>
-
-        <!-- Detected Order Summary Food Items (Auto-populated when an order is opened!) -->
-        <div id="cfa-kds-detected-items-box" class="cfa-kds-section" style="background: #ECFDF5; border-color: #A7F3D0; display: none;">
-          <div class="cfa-kds-section-title" style="color: #047857; margin-bottom: 4px;">
-            <span>🍗 Item Name & Quantity (<span id="cfa-kds-detected-count">0</span>)</span>
-            <span style="font-size: 10px; color: #059669;">✓ Synced to KDS</span>
-          </div>
-          <div id="cfa-kds-detected-list" style="font-size: 12px; color: #065F46; max-height: 100px; overflow-y: auto;"></div>
-        </div>
-
-        <!-- Section 2: 1-Click Phone Call / Sauce Additions (Flashes Kitchen Red) -->
-        <div class="cfa-kds-section">
-          <div class="cfa-kds-section-title">
-            <span>2. Instant Add & Flash Kitchen Red 🚨</span>
-          </div>
-          <div class="cfa-kds-presets">
-            <button class="cfa-kds-preset-btn" data-name="Barbeque Sauce Packets" data-qty="50" data-cat="Sauces" data-unit="Packets">⚡ +50 BBQ Sauces</button>
-            <button class="cfa-kds-preset-btn" data-name="Chick-fil-A® Sauce Packets" data-qty="50" data-cat="Sauces" data-unit="Packets">⚡ +50 CFA Sauces</button>
-            <button class="cfa-kds-preset-btn" data-name="Polynesian Sauce Packets" data-qty="25" data-cat="Sauces" data-unit="Packets">⚡ +25 Polynesian</button>
-            <button class="cfa-kds-preset-btn" data-name="Garden Herb Ranch Packets" data-qty="25" data-cat="Sauces" data-unit="Packets">⚡ +25 Ranch</button>
-            <button class="cfa-kds-preset-btn" data-name="Sweet Tea Gallon" data-qty="2" data-cat="Beverages" data-unit="Gallons">⚡ +2 Gal Sweet Tea</button>
-            <button class="cfa-kds-preset-btn" data-name="Serving Utensils & Plates Kit" data-qty="25" data-cat="Paper Goods" data-unit="Sets">⚡ +25 Plates/Utensils</button>
-          </div>
-        </div>
-
-        <!-- Section 3: Custom Item or Urgent Kitchen Alert Note -->
-        <div class="cfa-kds-section">
-          <div class="cfa-kds-section-title">
-            <span>3. Custom Addition / Kitchen Flash Note</span>
-          </div>
-          <div class="cfa-kds-field-row">
-            <input id="cfa-kds-custom-item" class="cfa-kds-input" placeholder="Item (e.g. Cookie Tray)" />
-            <input id="cfa-kds-custom-qty" type="number" min="1" value="1" class="cfa-kds-input" placeholder="Qty" />
-          </div>
-          <textarea id="cfa-kds-note" class="cfa-kds-textarea" placeholder="Urgent kitchen note (e.g. Guest called to add 50 BBQ sauces)..."></textarea>
-          <button id="cfa-kds-send-btn" class="cfa-kds-primary-btn" style="margin-top: 8px;">
-            🚨 Send to Kitchen KDS (Flash Red)
-          </button>
         </div>
       </div>
     </div>
 
-    <div id="cfa-kds-fab" class="cfa-kds-fab" title="Open Kitchen KDS Companion">
+    <div id="cfa-kds-fab" class="cfa-kds-fab hidden" title="Open Kitchen KDS Companion">
       <span id="cfa-kds-dot" class="cfa-kds-status-dot"></span>
       <span id="cfa-kds-fab-title" style="cursor:pointer;">🍳 Kitchen KDS Sync</span>
       <button id="cfa-kds-fab-settings" title="Cloud / Server Settings" style="background:rgba(255,255,255,0.25); border:none; color:#FFFFFF; border-radius:6px; padding:2px 6px; font-size:12px; cursor:pointer; margin-left:4px;">⚙️</button>
@@ -711,9 +717,8 @@
       if (existingKds.customer_phone) phoneInput.value = existingKds.customer_phone;
     }
 
-    if (!isPanelOpen) {
-      isPanelOpen = true;
-      panel.classList.remove('hidden');
+    if (rowElement && !isPanelOpen) {
+      setPanelOpen(true);
     }
   }
 
