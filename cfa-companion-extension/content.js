@@ -23,8 +23,8 @@
   let isBulkCrawling = false;
   let isPanelOpen = true;
 
-  const PROMISED_DATE_REGEX = /\b(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),\s+(?:[A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),\s*\d{1,2}:\d{2}\s*[ap]m\b/i;
-  const PROMISED_DATE_GLOBAL_REGEX = /\b(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),\s+(?:[A-Za-z]+\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),\s*\d{1,2}:\d{2}\s*[ap]m\b/gi;
+  const PROMISED_DATE_REGEX = /\b(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),?\s*(?:at\s+)?\d{1,2}:\d{2}\s*[ap]m\b/i;
+  const PROMISED_DATE_GLOBAL_REGEX = /\b(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,?\s*\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}),?\s*(?:at\s+)?\d{1,2}:\d{2}\s*[ap]m\b/gi;
 
   const DEFAULT_CLOUD_URL = 'https://kds-production-9203.up.railway.app';
   let kdsServerUrl = (localStorage.getItem('cfa_kds_server_url') || DEFAULT_CLOUD_URL).trim().replace(/\/+$/, '');
@@ -90,14 +90,19 @@
     };
   }
 
-  // Parses both "Friday, November 6, 6:30 am" AND "Saturday, 11/07/26, 7:00 AM"
+  // Parses dates like:
+  // "Friday, November 6, 6:30 am", "Saturday, 11/07/26, 7:00 AM", "Thu, Nov 19, 6:15 pm", "Nov 19 6:15 pm", "11/19/2026 1:00 pm"
   // Returns null if dateStr is empty or unparseable so existing KDS dates are never overwritten with Today!
   function parsePromisedDateToIso(dateStr) {
     if (!dateStr) return null;
     try {
-      const cleaned = dateStr.replace(/^[A-Za-z]+,\s*/, '').trim();
+      const currentYear = new Date().getFullYear();
+      const cleaned = dateStr
+        .replace(/^(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s*/i, '')
+        .replace(/\bat\s+/i, '')
+        .trim();
 
-      // Format 1: "11/07/26, 7:00 AM" or "11/07/2026, 7:00 AM"
+      // Format 1: "11/07/26, 7:00 AM" or "11/19/2026 6:15 pm"
       const slashMatch = cleaned.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s*(\d{1,2}:\d{2}\s*[ap]m)$/i);
       if (slashMatch) {
         const month = Number(slashMatch[1]);
@@ -108,9 +113,8 @@
         if (!isNaN(parsed.getTime())) return parsed.toISOString();
       }
 
-      // Format 2: "November 6, 6:30 am" or "December 11, 8:30 pm"
-      const currentYear = new Date().getFullYear();
-      const wordMatch = cleaned.match(/^([A-Za-z]+\s+\d{1,2})(?:,\s*(\d{4}))?,?\s*(\d{1,2}:\d{2}\s*[ap]m)$/i);
+      // Format 2: "November 6, 6:30 am" or "Nov 19, 6:15 pm" or "Nov 19 6:15 pm"
+      const wordMatch = cleaned.match(/^([A-Za-z]+\s+\d{1,2})(?:,?\s*(\d{4}))?,?\s*(\d{1,2}:\d{2}\s*[ap]m)$/i);
       if (wordMatch) {
         const year = wordMatch[2] || currentYear;
         const parsed = new Date(`${wordMatch[1]}, ${year} ${wordMatch[3]}`);
@@ -118,7 +122,12 @@
       }
 
       const fallback = new Date(dateStr);
-      if (!isNaN(fallback.getTime())) return fallback.toISOString();
+      if (!isNaN(fallback.getTime())) {
+        if (fallback.getFullYear() < 2020) {
+          fallback.setFullYear(currentYear);
+        }
+        return fallback.toISOString();
+      }
     } catch (e) {}
     return null;
   }
@@ -145,7 +154,8 @@
     if (!isoStr) return false;
     const t = new Date(isoStr).getTime();
     if (isNaN(t)) return false;
-    return t < Date.now();
+    // 12-hour buffer so timezone discrepancies between tablet and UTC server do not drop upcoming orders
+    return t < (Date.now() - 12 * 3600 * 1000);
   }
 
   function cleanGuestName(raw) {
@@ -734,6 +744,23 @@
     return null;
   }
 
+  // Tablet & Mobile friendly tap / click dispatcher
+  function triggerElementTap(el) {
+    if (!el) return;
+    try {
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      el.click();
+    } catch (e) {
+      try { el.click(); } catch (err) {}
+    }
+  }
+
   function scanCfaDashboardAndTabs() {
     const parsedRows = [];
     const seenKeys = new Set();
@@ -777,14 +804,16 @@
       }
     }
 
-    // Strategy B: Full-Page Text Scanner around Dashboard Promised Dates (ignoring modal Event Summary)
+    // Strategy B: Full-Page Text Scanner around Dashboard Promised Dates
     if (document.body) {
-      let fullText = (document.body.innerText || '').replace(root.innerText || '', '');
-      // Strip open modal section if present so we don't confuse modal header with dashboard table rows
-      const eventSumIdx = fullText.search(/Event\s+Summary/i);
-      const orderSumIdx = fullText.search(/Order\s+Summary/i);
-      const cutIdx = eventSumIdx !== -1 ? eventSumIdx : orderSumIdx;
-      const tableOnlyText = cutIdx !== -1 ? fullText.slice(0, cutIdx) : fullText;
+      let tableOnlyText = (document.body.innerText || '').replace(root.innerText || '', '');
+      // Strip open modal section elements rather than slicing the whole page at first occurrence
+      const openModals = Array.from(document.querySelectorAll('[role="dialog"], .modal, [class*="modal" i], [class*="dialog" i]'));
+      for (const m of openModals) {
+        if (m && m.innerText) {
+          tableOnlyText = tableOnlyText.replace(m.innerText, '');
+        }
+      }
 
       const matches = Array.from(tableOnlyText.matchAll(PROMISED_DATE_GLOBAL_REGEX));
       for (let i = 0; i < matches.length; i++) {
@@ -862,26 +891,34 @@
     const activeGuest = summaryData.guestName || customerInput.value.trim();
     const activeTimeIso = parsePromisedDateToIso(summaryData.pickupTimeStr);
 
-    // Prioritize matching the exact event row/KDS order by both guest name AND pickup time
+    // Prioritize matching the exact event row/KDS order by time AND guest/organization name
     const matchedRow = dashboardRowsData.find((r) => {
-      if (!activeGuest || r.guestName.toLowerCase() !== activeGuest.toLowerCase()) return false;
+      const rowName = (r.guestName || '').toLowerCase();
+      const guestLower = (activeGuest || '').toLowerCase();
+      const nameMatches = !guestLower || rowName === guestLower || rowName.includes(guestLower) || guestLower.includes(rowName);
       if (activeTimeIso && r.pickupIso) {
-        return Math.abs(new Date(r.pickupIso).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+        const timeMatches = Math.abs(new Date(r.pickupIso).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+        return timeMatches && (nameMatches || !activeGuest);
       }
-      return true;
+      return nameMatches;
     }) || dashboardRowsData.find(
-      (r) => activeGuest && r.guestName.toLowerCase() === activeGuest.toLowerCase()
+      (r) => activeGuest && r.guestName.toLowerCase().includes(activeGuest.toLowerCase())
     );
 
     const matchedKds = kdsOrders.find((o) => {
-      if (!activeGuest || o.customer_name.toLowerCase() !== activeGuest.toLowerCase()) return false;
+      const kdsName = (o.customer_name || '').toLowerCase();
+      const guestLower = (activeGuest || '').toLowerCase();
+      const nameMatches = !guestLower || kdsName === guestLower || kdsName.includes(guestLower) || guestLower.includes(kdsName);
       if (activeTimeIso && o.pickup_time) {
-        return Math.abs(new Date(o.pickup_time).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+        const timeMatches = Math.abs(new Date(o.pickup_time).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+        return timeMatches && (nameMatches || !activeGuest);
       }
-      return true;
+      return nameMatches;
     }) || kdsOrders.find(
-      (o) => activeGuest && o.customer_name.toLowerCase() === activeGuest.toLowerCase()
+      (o) => activeGuest && o.customer_name.toLowerCase().includes(activeGuest.toLowerCase())
     );
+
+    const finalCustomerName = (matchedRow && matchedRow.guestName) || (matchedKds && matchedKds.customer_name) || activeGuest;
     const finalPaymentStatus = summaryData.paymentStatus || (matchedRow ? matchedRow.paymentStatus : 'Payment Received');
 
     // Never fall back to promisedInput.value if it belongs to a different guest!
@@ -895,7 +932,7 @@
       ? matchedRow.orderNumber
       : matchedKds
       ? matchedKds.order_number
-      : buildOrderCode(activeGuest, finalTimeStr);
+      : buildOrderCode(finalCustomerName, finalTimeStr);
     const finalType =
       summaryData.orderType && summaryData.orderType !== 'Pickup'
         ? summaryData.orderType
@@ -905,7 +942,7 @@
         ? matchedKds.order_type
         : typeSelect.value;
 
-    if (activeGuest) customerInput.value = activeGuest;
+    if (finalCustomerName) customerInput.value = finalCustomerName;
     if (summaryData.contactPhone) phoneInput.value = summaryData.contactPhone;
     if (finalTimeStr) promisedInput.value = finalTimeStr;
     if (finalOrderNum) {
@@ -924,15 +961,15 @@
       return summaryData;
     }
 
-    const sig = `${activeGuest}|${finalOrderNum}|${finalPaymentStatus}|${summaryData.items.map((i) => `${i.quantity}:${i.name}`).join(',')}`;
-    if (!isBulkCrawling && activeGuest && sig !== lastAutoSyncedSignature) {
+    const sig = `${finalCustomerName}|${finalOrderNum}|${finalPaymentStatus}|${summaryData.items.map((i) => `${i.quantity}:${i.name}`).join(',')}`;
+    if (!isBulkCrawling && finalCustomerName && sig !== lastAutoSyncedSignature) {
       lastAutoSyncedSignature = sig;
 
       const res = await callKdsApi({
         type: 'KDS_SYNC_ORDER',
         payload: {
           order_number: finalOrderNum,
-          customer_name: activeGuest,
+          customer_name: finalCustomerName,
           customer_phone: summaryData.contactPhone || '',
           organization: summaryData.deliveryAddress || '',
           pickup_time: finalPickupIso,
@@ -1039,11 +1076,12 @@
     rebuildDropdownOptions();
   }
 
-  // Wait for the Order Summary modal to actually display the target guest's Primary Contact name & matching time
+  // Wait for the Order Summary modal to actually display the target guest or matching time
   function waitForGuestSummary(guestName, expectedTimeStr = '', timeoutMs = 2800) {
     return new Promise((resolve) => {
       const start = Date.now();
-      const targetLower = guestName.toLowerCase();
+      const targetLower = (guestName || '').toLowerCase().trim();
+      const targetWords = targetLower.split(/\s+/).filter((w) => w.length >= 3);
 
       // Extract time component like "9:15" or "1:00" or "6:15" from expectedTimeStr if present
       let expectedTimeClean = '';
@@ -1056,23 +1094,26 @@
         const parsed = parseOpenOrderSummary();
         if (
           parsed &&
-          parsed.items.length > 0 &&
-          parsed.guestName &&
-          parsed.guestName.toLowerCase() === targetLower
+          parsed.items.length > 0
         ) {
-          // If expected time is provided, verify it does not belong to a leftover modal from another event for the same guest
-          let timeMatches = true;
+          // If expected time is provided, verify it matches
+          let timeMatches = false;
           if (expectedTimeClean && parsed.pickupTimeStr) {
             const parsedTm = parsed.pickupTimeStr.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
-            if (parsedTm) {
-              const cleanParsed = parsedTm[0].toLowerCase().replace(/\s+/g, '');
-              if (cleanParsed !== expectedTimeClean) {
-                timeMatches = false;
-              }
+            if (parsedTm && parsedTm[0].toLowerCase().replace(/\s+/g, '') === expectedTimeClean) {
+              timeMatches = true;
             }
           }
 
-          if (timeMatches) {
+          const parsedGuestLower = (parsed.guestName || '').toLowerCase();
+          const nameMatches =
+            !targetLower ||
+            !parsedGuestLower ||
+            parsedGuestLower.includes(targetLower) ||
+            targetLower.includes(parsedGuestLower) ||
+            targetWords.some((w) => parsedGuestLower.includes(w));
+
+          if (timeMatches || nameMatches) {
             clearInterval(timer);
             resolve(parsed);
             return;
@@ -1080,12 +1121,7 @@
         }
         if (Date.now() - start >= timeoutMs) {
           clearInterval(timer);
-          // Only return if guestName matches or wasn't another guest's leftover modal!
-          if (parsed && (!parsed.guestName || parsed.guestName.toLowerCase() === targetLower)) {
-            resolve(parsed);
-          } else {
-            resolve(null);
-          }
+          resolve(parsed && parsed.items.length > 0 ? parsed : null);
         }
       }, 100);
     });
@@ -1159,12 +1195,10 @@
       closeOpenCfaModal();
       await new Promise((r) => setTimeout(r, 180));
 
-      // 2. Click the target row element
+      // 2. Click the target row element with tablet touch + pointer events
       const clickTarget = findClickableElementForRow(row);
-      if (clickTarget && typeof clickTarget.click === 'function') {
-        try {
-          clickTarget.click();
-        } catch (e) {}
+      if (clickTarget) {
+        triggerElementTap(clickTarget);
       }
 
       // 3. Wait for summary modal (up to 2800ms for tablet latency and Wi-Fi response)

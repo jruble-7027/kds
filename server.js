@@ -612,15 +612,16 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // If the order is NOT already on the KDS and has no valid pickup_time or its pickup_time is before current time, DO NOT SYNC IT!
+      // Only skip new orders if pickup_time is explicitly invalid or more than 12 hours in the past
+      // (12-hour grace buffer prevents timezone differences between local tablet and UTC server from dropping orders)
       const incomingTimeMs = data.pickup_time ? new Date(data.pickup_time).getTime() : NaN;
-      if (!existing && (isNaN(incomingTimeMs) || incomingTimeMs < Date.now())) {
+      if (!existing && (isNaN(incomingTimeMs) || incomingTimeMs < (Date.now() - 12 * 3600 * 1000))) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: true,
           mode: 'skipped_past_order',
           skipped: true,
-          reason: 'Order pickup time is missing or in the past'
+          reason: 'Order pickup time is missing or more than 12 hours in the past'
         }));
         return;
       }
