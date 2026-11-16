@@ -589,9 +589,16 @@ const server = http.createServer(async (req, res) => {
       const isErrorPayment = /\b(error|failed|declined)\b/i.test(incomingPaymentStatus);
       const isBadPayment = isCancelledPayment || isErrorPayment;
 
-      const existing = db.prepare(
-        'SELECT * FROM orders WHERE order_number = ? OR (LOWER(customer_name) = LOWER(?) AND customer_name != \'\') LIMIT 1'
-      ).get(orderNumber, customerNameParam);
+      let existing = null;
+      if (orderNumber) {
+        existing = db.prepare('SELECT * FROM orders WHERE order_number = ? LIMIT 1').get(orderNumber);
+      }
+      if (!existing && customerNameParam && data.pickup_time) {
+        // Only match by customer name if the pickup time also matches (so multiple orders for the same customer never collide!)
+        existing = db.prepare(
+          'SELECT * FROM orders WHERE LOWER(customer_name) = LOWER(?) AND (pickup_time = ? OR strftime(\'%Y-%m-%d %H:%M\', pickup_time) = strftime(\'%Y-%m-%d %H:%M\', ?)) LIMIT 1'
+        ).get(customerNameParam, data.pickup_time, data.pickup_time);
+      }
 
       // If the order is NOT already synced on the KDS and has "Error" or "Cancelled" payment status, DO NOT SYNC IT!
       if (!existing && isBadPayment) {

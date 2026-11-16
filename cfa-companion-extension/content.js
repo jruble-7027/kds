@@ -639,6 +639,33 @@
     }
   }
 
+  // Dismiss any open CFA Home modal/overlay so it doesn't block background table row clicks
+  function closeOpenCfaModal() {
+    try {
+      // 1. Dispatch Escape key to cancel/close any active dialog
+      const escOptions = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
+      document.dispatchEvent(new KeyboardEvent('keydown', escOptions));
+      document.dispatchEvent(new KeyboardEvent('keyup', escOptions));
+      window.dispatchEvent(new KeyboardEvent('keydown', escOptions));
+
+      // 2. Click any explicit close or dismiss buttons in modal dialogs (excluding extension elements)
+      const closeBtns = Array.from(document.querySelectorAll(
+        'button[aria-label*="close" i], button[title*="close" i], button.close, [class*="modal" i] button[class*="close" i], [role="dialog"] button[aria-label*="close" i], [role="dialog"] button:has(svg), .cdk-overlay-pane button[aria-label*="close" i]'
+      ));
+      for (const b of closeBtns) {
+        if (root.contains(b)) continue;
+        b.click();
+      }
+
+      // 3. Click backdrop if present
+      const backdrops = Array.from(document.querySelectorAll('.modal-backdrop, .cdk-overlay-backdrop, [class*="backdrop" i]'));
+      for (const bd of backdrops) {
+        if (root.contains(bd)) continue;
+        bd.click();
+      }
+    } catch (e) {}
+  }
+
   function findClickableElementForGuest(guestName) {
     if (!guestName || !document.body) return null;
     const lowerTarget = guestName.toLowerCase();
@@ -651,6 +678,58 @@
       if (t === lowerTarget || (parts.length >= 2 && t.includes(parts[0]) && t.includes(parts[1]) && t.length < 40)) {
         return el;
       }
+    }
+    return null;
+  }
+
+  // Target a specific row matching BOTH guest name AND promised pickup time (vital when a guest has multiple orders!)
+  function findClickableElementForGuestAndTime(guestName, promisedTime) {
+    if (!guestName || !document.body) return null;
+    const lowerGuest = guestName.toLowerCase();
+    const guestParts = lowerGuest.split(/\s+/).filter(Boolean);
+
+    let timeSub = '';
+    if (promisedTime) {
+      const tm = promisedTime.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
+      if (tm) timeSub = tm[0].toLowerCase().replace(/\s+/g, '');
+    }
+
+    // First pass: look for rows/containers containing BOTH guest and time
+    const rows = Array.from(document.body.querySelectorAll('tr, [role="row"], li, [class*="row" i]'));
+    for (const el of rows) {
+      if (root.contains(el)) continue;
+      const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
+      const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
+      if (guestMatch && timeMatch) {
+        const clickable = el.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
+        return clickable || el;
+      }
+    }
+
+    // Second pass: any candidate element containing both
+    const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
+    for (const el of candidates) {
+      if (root.contains(el)) continue;
+      const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
+      const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
+      if (guestMatch && timeMatch) {
+        return el;
+      }
+    }
+
+    return findClickableElementForGuest(guestName);
+  }
+
+  // Safely get clickable element for a specific row object
+  function findClickableElementForRow(row) {
+    if (row && row.domElement && document.body.contains(row.domElement)) {
+      const clickable = row.domElement.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
+      return clickable || row.domElement;
+    }
+    if (row && row.guestName) {
+      return findClickableElementForGuestAndTime(row.guestName, row.promisedDate);
     }
     return null;
   }
@@ -723,7 +802,7 @@
           const uniqueKey = `${parsed.guestName.toLowerCase()}|${parsed.promisedDate.toLowerCase()}`;
           if (!seenKeys.has(uniqueKey)) {
             seenKeys.add(uniqueKey);
-            parsed.domElement = findClickableElementForGuest(parsed.guestName);
+            parsed.domElement = findClickableElementForGuestAndTime(parsed.guestName, parsed.promisedDate);
             parsedRows.push(parsed);
           }
         }
@@ -781,10 +860,26 @@
       .join('');
 
     const activeGuest = summaryData.guestName || customerInput.value.trim();
-    const matchedRow = dashboardRowsData.find(
+    const activeTimeIso = parsePromisedDateToIso(summaryData.pickupTimeStr);
+
+    // Prioritize matching the exact event row/KDS order by both guest name AND pickup time
+    const matchedRow = dashboardRowsData.find((r) => {
+      if (!activeGuest || r.guestName.toLowerCase() !== activeGuest.toLowerCase()) return false;
+      if (activeTimeIso && r.pickupIso) {
+        return Math.abs(new Date(r.pickupIso).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+      }
+      return true;
+    }) || dashboardRowsData.find(
       (r) => activeGuest && r.guestName.toLowerCase() === activeGuest.toLowerCase()
     );
-    const matchedKds = kdsOrders.find(
+
+    const matchedKds = kdsOrders.find((o) => {
+      if (!activeGuest || o.customer_name.toLowerCase() !== activeGuest.toLowerCase()) return false;
+      if (activeTimeIso && o.pickup_time) {
+        return Math.abs(new Date(o.pickup_time).getTime() - new Date(activeTimeIso).getTime()) < 3600000;
+      }
+      return true;
+    }) || kdsOrders.find(
       (o) => activeGuest && o.customer_name.toLowerCase() === activeGuest.toLowerCase()
     );
     const finalPaymentStatus = summaryData.paymentStatus || (matchedRow ? matchedRow.paymentStatus : 'Payment Received');
@@ -944,11 +1039,19 @@
     rebuildDropdownOptions();
   }
 
-  // Wait for the Order Summary modal to actually display the target guest's Primary Contact name
-  function waitForGuestSummary(guestName, timeoutMs = 1500) {
+  // Wait for the Order Summary modal to actually display the target guest's Primary Contact name & matching time
+  function waitForGuestSummary(guestName, expectedTimeStr = '', timeoutMs = 2800) {
     return new Promise((resolve) => {
       const start = Date.now();
       const targetLower = guestName.toLowerCase();
+
+      // Extract time component like "9:15" or "1:00" or "6:15" from expectedTimeStr if present
+      let expectedTimeClean = '';
+      if (expectedTimeStr) {
+        const tm = expectedTimeStr.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
+        if (tm) expectedTimeClean = tm[0].toLowerCase().replace(/\s+/g, '');
+      }
+
       const timer = setInterval(() => {
         const parsed = parseOpenOrderSummary();
         if (
@@ -957,9 +1060,23 @@
           parsed.guestName &&
           parsed.guestName.toLowerCase() === targetLower
         ) {
-          clearInterval(timer);
-          resolve(parsed);
-          return;
+          // If expected time is provided, verify it does not belong to a leftover modal from another event for the same guest
+          let timeMatches = true;
+          if (expectedTimeClean && parsed.pickupTimeStr) {
+            const parsedTm = parsed.pickupTimeStr.match(/\b\d{1,2}:\d{2}\s*[ap]m\b/i);
+            if (parsedTm) {
+              const cleanParsed = parsedTm[0].toLowerCase().replace(/\s+/g, '');
+              if (cleanParsed !== expectedTimeClean) {
+                timeMatches = false;
+              }
+            }
+          }
+
+          if (timeMatches) {
+            clearInterval(timer);
+            resolve(parsed);
+            return;
+          }
         }
         if (Date.now() - start >= timeoutMs) {
           clearInterval(timer);
@@ -970,7 +1087,7 @@
             resolve(null);
           }
         }
-      }, 150);
+      }, 100);
     });
   }
 
@@ -1004,8 +1121,10 @@
 
       const alreadyOnKds = kdsOrders.find(
         (o) =>
-          o.order_number.toLowerCase() === (row.orderNumber || '').toLowerCase() ||
-          o.customer_name.toLowerCase() === (row.guestName || '').toLowerCase()
+          (row.orderNumber && o.order_number.toLowerCase() === row.orderNumber.toLowerCase()) ||
+          (o.customer_name.toLowerCase() === (row.guestName || '').toLowerCase() &&
+           row.pickupIso && o.pickup_time &&
+           Math.abs(new Date(o.pickup_time).getTime() - new Date(row.pickupIso).getTime()) < 3600000)
       );
 
       // If row's Payment Status is Error or Cancelled:
@@ -1036,19 +1155,27 @@
 
       syncAllBtn.textContent = `⏳ Reading Food (${i + 1}/${rows.length}): ${row.guestName}...`;
 
-      const clickTarget = findClickableElementForGuest(row.guestName) || row.domElement;
+      // 1. Close any previously open modal so backdrop doesn't block clicking this row
+      closeOpenCfaModal();
+      await new Promise((r) => setTimeout(r, 180));
+
+      // 2. Click the target row element
+      const clickTarget = findClickableElementForRow(row);
       if (clickTarget && typeof clickTarget.click === 'function') {
         try {
           clickTarget.click();
         } catch (e) {}
       }
 
-      const summary = await waitForGuestSummary(row.guestName, 1200);
+      // 3. Wait for summary modal (up to 2800ms for tablet latency and Wi-Fi response)
+      const summary = await waitForGuestSummary(row.guestName, row.promisedDate, 2800);
       const effectivePayStatus = (summary && summary.paymentStatus) || row.paymentStatus || 'Payment Received';
 
       // Double-check if modal revealed Error or Cancelled status
       if (isBadPaymentStatus(effectivePayStatus) && !alreadyOnKds) {
         skippedBadCount++;
+        closeOpenCfaModal();
+        await new Promise((r) => setTimeout(r, 120));
         continue;
       }
 
@@ -1058,6 +1185,8 @@
       const finalTimeStr = (summary && summary.pickupTimeStr) || row.promisedDate;
       const finalPickupIso = parsePromisedDateToIso(finalTimeStr) || row.pickupIso;
       if (isPastOrderTime(finalPickupIso) && !alreadyOnKds) {
+        closeOpenCfaModal();
+        await new Promise((r) => setTimeout(r, 120));
         continue;
       }
       const finalType = (summary && summary.orderType) || row.method;
@@ -1087,6 +1216,10 @@
           syncedCount++;
         }
       }
+
+      // Close modal before proceeding to next row
+      closeOpenCfaModal();
+      await new Promise((r) => setTimeout(r, 180));
     }
 
     isBulkCrawling = false;
