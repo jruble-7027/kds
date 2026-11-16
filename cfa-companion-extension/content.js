@@ -676,6 +676,22 @@
     } catch (e) {}
   }
 
+  function isDownloadOrPrintElement(el) {
+    if (!el) return false;
+    const href = (el.getAttribute('href') || '').toLowerCase();
+    const download = el.getAttribute('download');
+    if (download !== null) return true;
+    if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip/i.test(href)) return true;
+    const title = (el.getAttribute('title') || '').toLowerCase();
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+    const cls = (el.className || '').toLowerCase();
+    const text = (el.innerText || '').trim().toLowerCase();
+    if (/download|print|export|pdf|slip|invoice|receipt/i.test(`${title} ${aria} ${cls} ${text}`)) {
+      return true;
+    }
+    return false;
+  }
+
   function findClickableElementForGuest(guestName) {
     if (!guestName || !document.body) return null;
     const lowerTarget = guestName.toLowerCase();
@@ -683,7 +699,7 @@
 
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el)) continue;
+      if (root.contains(el) || isDownloadOrPrintElement(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       if (t === lowerTarget || (parts.length >= 2 && t.includes(parts[0]) && t.includes(parts[1]) && t.length < 40)) {
         return el;
@@ -712,15 +728,15 @@
       const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
       const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
       if (guestMatch && timeMatch) {
-        const clickable = el.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
-        return clickable || el;
+        const candidate = findClickableElementForRow({ domElement: el, guestName });
+        return candidate || el;
       }
     }
 
     // Second pass: any candidate element containing both
     const candidates = Array.from(document.body.querySelectorAll('tr, [role="row"], td, [role="cell"], a, span, div'));
     for (const el of candidates) {
-      if (root.contains(el)) continue;
+      if (root.contains(el) || isDownloadOrPrintElement(el)) continue;
       const t = (el.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase();
       const guestMatch = t.includes(lowerGuest) || (guestParts.length >= 2 && t.includes(guestParts[0]) && t.includes(guestParts[1]));
       const timeMatch = !timeSub || t.replace(/\s+/g, '').includes(timeSub);
@@ -732,21 +748,49 @@
     return findClickableElementForGuest(guestName);
   }
 
-  // Safely get clickable element for a specific row object
+  // Safely get clickable element for a specific row object (Never clicks download or print actions!)
   function findClickableElementForRow(row) {
-    if (row && row.domElement && document.body.contains(row.domElement)) {
-      const clickable = row.domElement.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"], td:first-child');
-      return clickable || row.domElement;
+    if (!row) return null;
+    const container = (row.domElement && document.body.contains(row.domElement))
+      ? row.domElement
+      : (row.guestName ? findClickableElementForGuestAndTime(row.guestName, row.promisedDate) : null);
+
+    if (!container) return null;
+
+    // 1. First priority: The specific element or cell containing the guest name
+    if (row.guestName) {
+      const guestLower = row.guestName.toLowerCase().trim();
+      const textNodes = Array.from(container.querySelectorAll('td, [role="cell"], a, button:not(.cfa-kds-row-btn), span, div'));
+      for (const el of textNodes) {
+        if (isDownloadOrPrintElement(el) || el.closest('a[download], a[href*="pdf" i], a[href*="download" i]')) continue;
+        const txt = (el.innerText || '').trim().toLowerCase();
+        if (txt === guestLower || (guestLower.length >= 4 && txt.includes(guestLower))) {
+          return el;
+        }
+      }
     }
-    if (row && row.guestName) {
-      return findClickableElementForGuestAndTime(row.guestName, row.promisedDate);
+
+    // 2. Second priority: The first data cell (excluding action button/download columns)
+    const dataCells = Array.from(container.querySelectorAll('td:not(.cfa-kds-row-action-cell), [role="cell"]'));
+    for (const cell of dataCells) {
+      if (isDownloadOrPrintElement(cell)) continue;
+      const innerA = cell.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"]');
+      if (innerA && !isDownloadOrPrintElement(innerA)) {
+        return innerA;
+      }
+      return cell;
+    }
+
+    // 3. Fallback to row container itself
+    if (!isDownloadOrPrintElement(container)) {
+      return container;
     }
     return null;
   }
 
-  // Tablet & Mobile friendly tap / click dispatcher
+  // Tablet & Mobile friendly tap / click dispatcher (safeguarded against downloads/prints)
   function triggerElementTap(el) {
-    if (!el) return;
+    if (!el || isDownloadOrPrintElement(el)) return;
     try {
       if (typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
