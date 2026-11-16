@@ -92,6 +92,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
+      if (message.type === 'KDS_CLEAR_ALL') {
+        const result = await fetchFromKds(
+          '/api/orders/clear-all',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          },
+          cfg
+        );
+        sendResponse({ ok: result.ok, status: result.status, data: result.data });
+        return;
+      }
+
       sendResponse({ ok: false, error: 'Unknown message type' });
     } catch (err) {
       sendResponse({

@@ -439,6 +439,7 @@
           <input id="cfa-kds-server-url" class="cfa-kds-input" placeholder="http://localhost:3000 or https://...up.railway.app" style="margin-bottom:6px; width:100%;" />
           <input id="cfa-kds-api-key" type="password" class="cfa-kds-input" placeholder="Team Password / KDS_PASSWORD (if set)" style="margin-bottom:6px; width:100%;" />
           <button id="cfa-kds-save-settings" class="cfa-kds-secondary-btn" style="width:100%; padding:6px;">✓ Save & Reconnect</button>
+          <button id="cfa-kds-clear-all" class="cfa-kds-secondary-btn" style="width:100%; padding:6px; margin-top:8px; background:#FEE2E2; color:#B91C1C; border-color:#FECACA; font-weight:700;">🗑️ Clear All Orders from KDS (Start Fresh)</button>
         </div>
 
         <!-- Bulk Dashboard Sync Banner -->
@@ -532,10 +533,11 @@
       </div>
     </div>
 
-    <button id="cfa-kds-fab" class="cfa-kds-fab" title="Open Kitchen KDS Companion">
+    <div id="cfa-kds-fab" class="cfa-kds-fab" title="Open Kitchen KDS Companion">
       <span id="cfa-kds-dot" class="cfa-kds-status-dot"></span>
-      <span>🍳 Kitchen KDS Sync</span>
-    </button>
+      <span id="cfa-kds-fab-title" style="cursor:pointer;">🍳 Kitchen KDS Sync</span>
+      <button id="cfa-kds-fab-settings" title="Cloud / Server Settings" style="background:rgba(255,255,255,0.25); border:none; color:#FFFFFF; border-radius:6px; padding:2px 6px; font-size:12px; cursor:pointer; margin-left:4px;">⚙️</button>
+    </div>
   `;
 
   document.body.appendChild(root);
@@ -572,9 +574,18 @@
     }, 6500);
   }
 
+  function setPanelOpen(open) {
+    isPanelOpen = open;
+    panel.classList.toggle('hidden', !open);
+    fab.classList.toggle('hidden', open);
+    if (open) {
+      refreshKdsOrders();
+      scanCfaDashboardAndTabs();
+    }
+  }
+
   minimizeBtn.addEventListener('click', () => {
-    isPanelOpen = false;
-    panel.classList.add('hidden');
+    setPanelOpen(false);
   });
 
   const settingsToggleBtn = document.getElementById('cfa-kds-settings-toggle');
@@ -582,6 +593,8 @@
   const serverUrlInput = document.getElementById('cfa-kds-server-url');
   const apiKeyInput = document.getElementById('cfa-kds-api-key');
   const saveSettingsBtn = document.getElementById('cfa-kds-save-settings');
+  const clearAllKdsBtn = document.getElementById('cfa-kds-clear-all');
+  const fabSettingsBtn = document.getElementById('cfa-kds-fab-settings');
 
   serverUrlInput.value = kdsServerUrl;
   apiKeyInput.value = kdsApiKey;
@@ -589,6 +602,14 @@
   settingsToggleBtn.addEventListener('click', () => {
     settingsBox.style.display = settingsBox.style.display === 'none' ? 'block' : 'none';
   });
+
+  if (fabSettingsBtn) {
+    fabSettingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setPanelOpen(true);
+      settingsBox.style.display = 'block';
+    });
+  }
 
   saveSettingsBtn.addEventListener('click', async () => {
     kdsServerUrl = serverUrlInput.value.trim().replace(/\/+$/, '');
@@ -609,13 +630,29 @@
     await refreshKdsOrders();
   });
 
+  if (clearAllKdsBtn) {
+    clearAllKdsBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to clear all orders from the Kitchen KDS board and start completely fresh? This cannot be undone.')) {
+        return;
+      }
+      clearAllKdsBtn.disabled = true;
+      clearAllKdsBtn.textContent = '⏳ Clearing KDS Board...';
+      const res = await callKdsApi({ type: 'KDS_CLEAR_ALL' });
+      clearAllKdsBtn.disabled = false;
+      clearAllKdsBtn.textContent = '🗑️ Clear All Orders from KDS (Start Fresh)';
+      if (res && res.ok) {
+        showToast('✓ Cleared all orders from Kitchen KDS! Board is fresh.', 'success');
+        kdsOrders = [];
+        rebuildDropdownOptions();
+        await refreshKdsOrders();
+      } else {
+        showToast(`Failed to clear orders: ${(res && res.error) || 'Offline'}`, 'error');
+      }
+    });
+  }
+
   fab.addEventListener('click', () => {
-    isPanelOpen = !isPanelOpen;
-    panel.classList.toggle('hidden', !isPanelOpen);
-    if (isPanelOpen) {
-      refreshKdsOrders();
-      scanCfaDashboardAndTabs();
-    }
+    setPanelOpen(true);
   });
 
   function selectGuestOrder(rowObj, rowElement = null) {
@@ -683,7 +720,8 @@
       for (const node of candidates) {
         if (node.hasAttribute && node.hasAttribute('download')) return true;
         const href = (node.getAttribute && node.getAttribute('href') || '').toLowerCase();
-        if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip|edit|modify|change|cancel|delete|trash/i.test(href)) {
+        // Ban download, print, edit, modify, and guest/customer profile navigation links (which jump to Guest tab)
+        if (/download|print|pdf|export|receipt|invoice|csv|xlsx|slip|edit|modify|change|cancel|delete|trash|guest|customer|profile/i.test(href)) {
           return true;
         }
         const title = (node.getAttribute && node.getAttribute('title') || '').toLowerCase();
@@ -691,7 +729,7 @@
         const cls = (node.className || '').toString().toLowerCase();
         const text = (node.innerText || '').trim().toLowerCase();
         const combined = `${href} ${title} ${aria} ${cls} ${text}`;
-        if (/download|print|export|pdf|slip|invoice|receipt|edit\s+order|\bedit\b|modify|pencil|change\s+order|cancel|delete|trash|kebab|more\s*action|dropdown/i.test(combined)) {
+        if (/download|print|export|pdf|slip|invoice|receipt|edit\s+order|\bedit\b|modify|pencil|change\s+order|cancel|delete|trash|kebab|more\s*action|dropdown|\bguest\b|customer\s+profile/i.test(combined)) {
           return true;
         }
       }
@@ -755,7 +793,7 @@
     return findClickableElementForGuest(guestName);
   }
 
-  // Safely get clickable element for a specific row object (Never clicks download, print, edit, or modify actions!)
+  // Safely get clickable element for a specific row object (Never clicks download, print, edit, or guest tab navigation!)
   function findClickableElementForRow(row) {
     if (!row) return null;
     const container = (row.domElement && document.body.contains(row.domElement))
@@ -764,42 +802,43 @@
 
     if (!container) return null;
 
-    // 1. First priority: An element matching the order number (e.g. #12345 or row.orderNumber)
-    if (row.orderNumber) {
-      const numClean = row.orderNumber.replace(/^[#\s]+/, '').trim().toLowerCase();
-      const numNodes = Array.from(container.querySelectorAll('a, button:not(.cfa-kds-row-btn), [role="button"], td, span, div'));
-      for (const el of numNodes) {
-        if (isUnsafeActionElement(el)) continue;
-        const txt = (el.innerText || '').replace(/^[#\s]+/, '').trim().toLowerCase();
-        if (txt === numClean && txt.length >= 3) {
-          return el;
-        }
-      }
-    }
-
-    // 2. Second priority: An element whose text EXACTLY equals guest name (never substring, so we don't hit tooltips like "Edit order for Garner Food"!)
-    if (row.guestName) {
-      const guestLower = row.guestName.toLowerCase().trim();
-      const textNodes = Array.from(container.querySelectorAll('a, button:not(.cfa-kds-row-btn), [role="button"], td, span, div'));
-      for (const el of textNodes) {
-        if (isUnsafeActionElement(el)) continue;
-        const txt = (el.innerText || '').trim().toLowerCase();
-        if (txt === guestLower) {
-          return el;
-        }
-      }
-    }
-
-    // 3. Third priority: The first or second data cell only (Order # or Guest column, never action columns)
+    // 1. Priority 1: Neutral table data cells (like Promised Date, Method, Total)
+    // In CFA Home's Angular table, clicking any neutral table cell triggers the row's openOrderSummary() handler!
+    // It avoids clicking <a href="/guests/..."> which navigates away to the Guest tab.
     const dataCells = Array.from(container.querySelectorAll('td:not(.cfa-kds-row-action-cell), [role="cell"]'));
-    for (let c = 0; c < Math.min(2, dataCells.length); c++) {
-      const cell = dataCells[c];
+    for (const cell of dataCells) {
       if (isUnsafeActionElement(cell)) continue;
-      const innerA = cell.querySelector('a, button:not(.cfa-kds-row-btn), [role="button"]');
-      if (innerA && !isUnsafeActionElement(innerA)) {
-        return innerA;
+      // Make sure the cell doesn't have an inner guest profile link
+      const innerA = cell.querySelector('a, button');
+      if (innerA) {
+        if (isUnsafeActionElement(innerA)) continue;
+        const aHref = (innerA.getAttribute && innerA.getAttribute('href') || '').toLowerCase();
+        if (/guest|customer/i.test(aHref)) continue;
       }
-      return cell;
+      const cellText = (cell.innerText || '').trim();
+      // Target neutral cells: Date, Method, or Total
+      if (PROMISED_DATE_REGEX.test(cellText) || /\b(Pickup|Delivery|Curbside)\b/i.test(cellText) || /\$\d/i.test(cellText)) {
+        return cell;
+      }
+    }
+
+    // 2. Priority 2: Check for an explicit Order Summary button or Order Details element (NOT Guest profile!)
+    const orderDetailEls = Array.from(container.querySelectorAll('button:not(.cfa-kds-row-btn), a, [role="button"], span'));
+    for (const el of orderDetailEls) {
+      if (isUnsafeActionElement(el)) continue;
+      const href = (el.getAttribute && el.getAttribute('href') || '').toLowerCase();
+      if (/guest|customer/i.test(href)) continue;
+      const aria = (el.getAttribute && el.getAttribute('aria-label') || '').toLowerCase();
+      const title = (el.getAttribute && el.getAttribute('title') || '').toLowerCase();
+      const txt = (el.innerText || '').trim().toLowerCase();
+      if (/order\s*summary|view\s*order|order\s*detail|event\s*summary/i.test(`${aria} ${title} ${txt}`)) {
+        return el;
+      }
+    }
+
+    // 3. Fallback: The row container itself (tr)
+    if (!isUnsafeActionElement(container)) {
+      return container;
     }
 
     return null;

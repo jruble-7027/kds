@@ -739,6 +739,27 @@
     }
   }
 
+  // Clear All Orders from KDS (Reset / Start Fresh)
+  async function clearAllOrders() {
+    if (!window.confirm('Are you sure you want to clear ALL catering orders from KDS and start fresh?\n\nThis will wipe existing test orders so you can re-sync cleanly.')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/orders/clear-all', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        orders = [];
+        renderOrders();
+        showToast(data.message || '🗑️ All orders cleared from KDS');
+      } else {
+        alert(data.error || 'Failed to clear orders');
+      }
+    } catch (err) {
+      console.error('Failed to clear all orders:', err);
+      alert('Network error while clearing orders.');
+    }
+  }
+
   // --- QUICK-ADD / EMERGENCY MODIFICATION MODAL (FULL MENU PICKER + QUANTITY) ---
   let quickModActiveCategory = 'All';
   let quickModSearchTerm = '';
@@ -1274,6 +1295,13 @@
       }
     });
 
+    sseSource.addEventListener('orders_cleared', e => {
+      const data = JSON.parse(e.data);
+      orders = [];
+      renderOrders();
+      showToast(data.summary || '🗑️ All orders cleared from KDS');
+    });
+
     sseSource.onerror = err => {
       console.warn('SSE connection interrupted, retrying in 3s...');
     };
@@ -1432,6 +1460,7 @@
     exportFulfilledCsv,
     setOrderStatus,
     deleteOrder,
+    clearAllOrders,
     toggleFocusOrder,
     openQuickModModal,
     openNewOrderModal,

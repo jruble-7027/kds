@@ -1120,6 +1120,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/orders/clear-all (Wipe all orders from KDS to start completely fresh)
+  if ((pathname === '/api/orders/clear-all' && method === 'POST') || (pathname === '/api/orders' && method === 'DELETE')) {
+    try {
+      const orderCount = db.prepare('SELECT COUNT(*) as count FROM orders').get().count;
+      db.prepare('DELETE FROM order_items').run();
+      db.prepare('DELETE FROM order_activity_logs').run();
+      db.prepare('DELETE FROM orders').run();
+
+      broadcastEvent('orders_cleared', {
+        clearedAt: new Date().toISOString(),
+        count: orderCount
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, count: orderCount, message: `Cleared ${orderCount} orders from KDS.` }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
   // GET /api/network-info (Returns local IPs for opening on tablet/mobile)
   if (pathname === '/api/network-info' && method === 'GET') {
     const interfaces = os.networkInterfaces();
